@@ -58,3 +58,30 @@ for(const serviceType of ['hourly','escort'] as const){
 }
 
 test('既有未付款订单不能在资格撤销后通过支付绕过发单检查，重复已支付回调仍保持幂等',()=>{const f=fixture();const unpaid=f.create(),paid=f.create();f.call(f.boss,'POST',`/v1/orders/${paid.id}/pay`);f.call(f.admin,'PATCH','/v1/admin/players/p0',{approved:false});assert.throws(()=>f.call(f.boss,'POST',`/v1/orders/${unpaid.id}/pay`),/发单资格/);assert.equal(f.call<Order>(f.admin,'GET',`/v1/orders/${unpaid.id}`).status,'unpaid');assert.equal(f.call<Order>(f.boss,'POST',`/v1/orders/${paid.id}/pay`).status,'waiting');});
+
+test('四种资格状态均可独立保存，单资格用户仅可发接对应类型订单',()=>{
+  const f=fixture(false),publisher=loginUser(f,'u-p7');
+  const profiles=f.server.read().players;
+  assert.deepEqual(profiles.find(p=>p.userId==='u-boss')!.qualifications,[]);
+  assert.deepEqual(profiles.find(p=>p.userId==='u-hourly')!.qualifications,['hourly']);
+  assert.deepEqual(profiles.find(p=>p.userId==='u-escort')!.qualifications,['escort']);
+  assert.deepEqual(profiles.find(p=>p.userId==='u-player')!.qualifications,['hourly','escort']);
+  for(const [accountId,allowed,locked] of [['u-hourly','hourly','escort'],['u-escort','escort','hourly']]){
+    const user=loginUser(f,accountId);
+    const input=(serviceType:string)=>({serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800});
+    assert.equal(f.call<Order>(user,'POST','/v1/orders',input(allowed)).serviceType,allowed);
+    assert.throws(()=>f.call(user,'POST','/v1/orders',input(locked)),/发单资格/);
+    const lockedOrder=f.call<Order>(publisher,'POST','/v1/orders',input(locked));f.call(publisher,'POST',`/v1/orders/${lockedOrder.id}/pay`);
+    assert.throws(()=>f.call(user,'POST',`/v1/orders/${lockedOrder.id}/accept`),/审核/);
+    const allowedOrder=f.call<Order>(publisher,'POST','/v1/orders',input(allowed));f.call(publisher,'POST',`/v1/orders/${allowedOrder.id}/pay`);
+    assert.equal(f.call<Order>(user,'POST',`/v1/orders/${allowedOrder.id}/accept`).playerId,profiles.find(p=>p.userId===accountId)!.id);
+    const app=f.call<Application>(user,'POST','/v1/applications',{serviceType:locked,gameIds:['valorant'],introduction:'独立申请尚未开通类型的专项考核资格。'});
+    f.call(f.admin,'POST',`/v1/admin/applications/${app.id}/review`,{status:'rejected',note:'本次新方向考核未通过'});
+    assert.equal(f.call<Order>(user,'POST','/v1/orders',input(allowed)).serviceType,allowed);
+    assert.throws(()=>f.call(user,'POST','/v1/orders',input(locked)),/发单资格/);
+  }
+});
+test('单资格样例升级不覆盖已有用户资格、游戏范围、订单和审核记录',()=>{
+  const f=fixture();const db=f.server.read();const p=db.players.find(p=>p.id==='p0')!;p.qualifications=['escort'];p.qualificationGames={escort:['lol']};db.schema=2;db.players=db.players.filter(p=>!['p-hourly','p-escort'].includes(p.id));f.storage.setItem(STORAGE_KEY,JSON.stringify(db));
+  const migrated=f.server.read();assert.equal(migrated.schema,2);assert.deepEqual(migrated.players.find(p=>p.id==='p0')!.qualifications,['escort']);assert.deepEqual(migrated.players.find(p=>p.id==='p0')!.qualificationGames,{escort:['lol']});assert.deepEqual(migrated.orders,db.orders);assert.deepEqual(migrated.applications,db.applications);assert.deepEqual(migrated.sessions,db.sessions);assert.equal(migrated.players.filter(p=>p.id==='p-hourly').length,1);assert.equal(f.server.read().players.length,migrated.players.length);
+});

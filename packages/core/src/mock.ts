@@ -14,15 +14,14 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
   function read():Database {
     const raw=storage.getItem(STORAGE_KEY);
     if(raw){try{const db=JSON.parse(raw) as Database;
-      if(db.schema===2)return db;
       if(db.schema===1){const seed=createSeed(clock());db.schema=2;db.applications=[];
         db.players.forEach(p=>p.qualifications=p.approved?['hourly','escort']:[]);
         seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));
         db.orders.forEach(o=>{o.serviceType='hourly';o.task='';o.team=o.playerId?[{playerId:o.playerId,name:o.playerName||'',settlementId:o.settlementId}]:[];if(['serving','confirming','completed'].includes(o.status))o.startedAt=o.paidAt||o.createdAt;});
         const neutral=(v:string)=>v.replace(/\u8001\u677f/g,'用户').replace(/\u6253\u624b/g,'队友').replace(/\u966a\u73a9/g,'组队');
         db.audit.forEach(a=>{a.action=neutral(a.action);a.detail=neutral(a.detail);});db.settings.announcement=neutral(db.settings.announcement);db.orders.forEach(o=>{o.note=neutral(o.note);o.timeline.forEach(t=>{t.label=neutral(t.label);if(t.note)t.note=neutral(t.note);});});
-        storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
       }
+      if(db.schema===2){if(['p-hourly','p-escort'].some(id=>!db.players.some(p=>p.id===id))){const seed=createSeed(clock());seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));storage.setItem(STORAGE_KEY,JSON.stringify(db));}return db;}
     }catch{/* recreate corrupt demo data */}}
     const db=createSeed(clock());storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
   }
