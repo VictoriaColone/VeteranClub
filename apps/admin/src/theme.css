@@ -11,3 +11,26 @@ body,.main-shell{background:var(--club-bg)}.sidebar{background:#151922;border-co
 @media(max-width:1250px){.main-content{padding:26px 23px}.top-header,.demo-bar{padding-inline:23px}.stat-card{padding:17px 14px}.stat-value{font-size:30px}.stat-chip,.stat-foot .stat-note,.stat-foot>button{font-size:9px}.quick-actions>button{padding:13px}.quick-actions>button>span:nth-child(2){gap:6px;font-size:11px}.quick-actions strong{font-size:12px}.panel-heading{padding:20px 19px 15px}.today-date{font-size:10px}.table-tabs>button{font-size:11px}}
 @media(max-width:1050px){.brand{font-size:17px}.brand-symbol{font-size:32px}.brand small{font-size:7px;letter-spacing:2px}.workspace strong{font-size:11px}.workspace small{font-size:7px}.main-content{padding-inline:19px}.stat-value{font-size:27px}.quick-action-icon{width:29px;height:29px;font-size:15px}.quick-actions>button>span:nth-child(2){flex-direction:column;align-items:flex-start;gap:4px}.quick-actions>button{padding:12px}.today-date{display:none}.panel-heading h2{font-size:15px}.panel-heading p{font-size:10px}}
 @media(max-width:800px){.top-header{height:64px;padding-inline:17px}.demo-bar{padding:10px 17px;font-size:9px;line-height:1.8}.demo-bar>button{font-size:9px}.main-content{padding:23px 16px}.page-top h1{font-size:24px}.page-top p{font-size:11px}.page-top-actions .el-button{height:32px;font-size:10px;padding:7px 9px}.stat-head{font-size:12px}.stat-foot .stat-note,.stat-foot>button,.stat-chip{font-size:10px}.quick-actions{flex-wrap:wrap;gap:9px}.quick-actions>button{min-width:calc(50% - 9px)}.quick-actions>button>span:nth-child(2){flex-direction:row;align-items:center;font-size:11px;gap:8px}.summary-strip span{font-size:10px}.summary-strip strong{font-size:22px}.table-tabs>button{font-size:11px}.result-count{font-size:10px}.table-pagination>span{font-size:9px}.panel-footnote{font-size:10px}.environment{font-size:10px}.breadcrumb{font-size:11px}}
+
+/* Desktop collapse and the narrow-screen drawer use separate state. */
+.sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:34px;padding:0;border-radius:8px;font-size:19px;color:var(--club-secondary)}
+.sidebar-toggle:hover,.sidebar-close:hover{background:var(--club-raised);color:var(--club-primary)}
+.sidebar{overflow-y:auto;overflow-x:hidden}
+.sidebar-close,.sidebar-backdrop{display:none}
+@media(min-width:801px){
+  .sidebar.collapsed{width:72px;padding-inline:12px}
+  .sidebar.collapsed .brand{padding:0;justify-content:center}
+  .sidebar.collapsed .brand>div,.sidebar.collapsed .workspace,.sidebar.collapsed .nav-caption,.sidebar.collapsed .mobile-entry{display:none}
+  .sidebar.collapsed nav{margin-top:32px}
+  .sidebar.collapsed nav>button{justify-content:center;padding:0;gap:0}
+  .sidebar.collapsed nav>button>span,.sidebar.collapsed .staff-card>div:nth-child(2),.sidebar.collapsed .staff-card>.el-icon{display:none}
+  .sidebar.collapsed nav>button>.el-icon{font-size:20px}
+  .sidebar.collapsed .staff-card{justify-content:center}
+  .sidebar-collapsed .main-shell{margin-left:72px}
+}
+@media(max-width:800px){
+  .sidebar.open{padding-top:54px}
+  .sidebar-close{display:inline-flex;position:absolute;right:12px;top:10px;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;font-size:20px;color:var(--club-secondary)}
+  .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:29;background:#070a10a8;backdrop-filter:blur(2px);cursor:default}
+  .sidebar-collapsed .main-shell{margin-left:0}
+}
