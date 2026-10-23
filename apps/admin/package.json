@@ -1,0 +1,21 @@
+{
+  "name": "@stellar/admin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5175",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@stellar/core": "1.0.0",
+    "vue": "3.4.21",
+    "element-plus": "2.14.7",
+    "@element-plus/icons-vue": "^2.3.1",
+    "pinia": "2.1.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.4",
+    "vite": "5.2.8"
+  }
+}

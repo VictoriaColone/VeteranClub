@@ -1,0 +1,8 @@
+node_modules/
+dist/
+apps/*/dist/
+.sites-runtime/
+*.log
+.DS_Store
+.env.local
+artifacts/
