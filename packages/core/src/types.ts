@@ -13,7 +13,7 @@ export interface Order { serviceType:ServiceType; task:string; team:TeamMember[]
 export interface Settlement { id: string; playerId: string; playerName: string; orderIds: string[]; amount: number; status: 'pending' | 'paid'; createdAt: number; paidAt?: number }
 export interface Audit { id: string; at: number; actor: string; action: string; target: string; detail: string }
 export interface ClubSettings { name: string; commissionBps: number; unpaidTimeoutMinutes: number; announcement: string }
-export interface Database { schema: number; applications:Application[]; revision: number; games: Game[]; players: Player[]; orders: Order[]; settlements: Settlement[]; audit: Audit[]; settings: ClubSettings; sessions: Session[]; sequence: number }
+export interface Database { schema: number; catalogRevision?:number; applications:Application[]; revision: number; games: Game[]; players: Player[]; orders: Order[]; settlements: Settlement[]; audit: Audit[]; settings: ClubSettings; sessions: Session[]; sequence: number }
 export interface OrderFilters { status?: string; gameId?: string; query?: string; scope?: 'mine' | 'hall' | 'all'; serviceType?:ServiceType; refund?: string }
 export interface OrderInput { serviceType?:ServiceType; task?:string; taskPrice?:number; gameId: string; region: string; playerId?: string; quantity: number; note?: string }
 export interface Dashboard { todayRevenue: number; todayOrders: number; liveOrders: number; refundPending: number; onlinePlayers: number; totalPlayers: number; availablePlayers: number; unassigned: number; pendingPayout: number; revenueTrend: {label: string; revenue: number; orders: number}[]; gameDistribution: {name: string; orders: number; color: string}[]; recentOrders: Order[]; activity: Audit[] }

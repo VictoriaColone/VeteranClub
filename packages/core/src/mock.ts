@@ -1,4 +1,4 @@
-import { createSeed, STORAGE_KEY } from './seed';
+import { createSeed, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION } from './seed';
 import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
@@ -14,14 +14,28 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
   function read():Database {
     const raw=storage.getItem(STORAGE_KEY);
     if(raw){try{const db=JSON.parse(raw) as Database;
-      if(db.schema===1){const seed=createSeed(clock());db.schema=2;db.applications=[];
+      let legacyUpgrade=false;
+      if(db.schema===1){legacyUpgrade=true;const seed=createSeed(clock());db.schema=2;db.applications=[];
         db.players.forEach(p=>p.qualifications=p.approved?['hourly','escort']:[]);
         seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));
         db.orders.forEach(o=>{o.serviceType='hourly';o.task='';o.team=o.playerId?[{playerId:o.playerId,name:o.playerName||'',settlementId:o.settlementId}]:[];if(['serving','confirming','completed'].includes(o.status))o.startedAt=o.paidAt||o.createdAt;});
         const neutral=(v:string)=>v.replace(/\u8001\u677f/g,'用户').replace(/\u6253\u624b/g,'队友').replace(/\u966a\u73a9/g,'组队');
         db.audit.forEach(a=>{a.action=neutral(a.action);a.detail=neutral(a.detail);});db.settings.announcement=neutral(db.settings.announcement);db.orders.forEach(o=>{o.note=neutral(o.note);o.timeline.forEach(t=>{t.label=neutral(t.label);if(t.note)t.note=neutral(t.note);});});
       }
-      if(db.schema===2){if(['p-hourly','p-escort'].some(id=>!db.players.some(p=>p.id===id))){const seed=createSeed(clock());seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));storage.setItem(STORAGE_KEY,JSON.stringify(db));}return db;}
+      if(db.schema===2){
+        let changed=legacyUpgrade;
+        if(['p-hourly','p-escort'].some(id=>!db.players.some(p=>p.id===id))){const seed=createSeed(clock());seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));changed=true;}
+        if(db.catalogRevision!==CATALOG_REVISION){
+          const legacy:Record<string,string>={hok:'delta',pubg:'delta'};
+          const mapIds=(ids:string[])=>[...new Set(ids.map(id=>legacy[id]||id))].filter(id=>SUPPORTED_GAMES.some(g=>g.id===id));
+          db.games=SUPPORTED_GAMES.map(g=>({...g,regions:[...g.regions]}));
+          db.players.forEach(p=>{p.gameIds=mapIds(p.gameIds);if(p.qualificationGames)for(const type of ['hourly','escort'] as const){if(p.qualificationGames[type])p.qualificationGames[type]=mapIds(p.qualificationGames[type]!);}p.subtitle=p.subtitle.replace(/王者荣耀.*|和平精英.*/g,'三角洲 · 战术协作');});
+          db.applications.forEach(a=>a.gameIds=mapIds(a.gameIds));
+          db.orders.forEach(o=>{if(legacy[o.gameId]){const old=o.gameName;o.gameId='delta';o.gameName='三角洲';o.region='国服';o.timeline.push({at:clock(),actor:'系统',label:'演示游戏配置已更新',note:old+' → 三角洲'});}if(o.serviceType==='escort'&&(!o.task||o.task==='完成指定地图任务并成功撤离'))o.task=DEFAULT_ESCORT_TASK;});
+          db.catalogRevision=CATALOG_REVISION;changed=true;
+        }
+        if(changed)storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
+      }
     }catch{/* recreate corrupt demo data */}}
     const db=createSeed(clock());storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
   }
@@ -58,10 +72,10 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     else if(route==='/v1/orders'&&method==='POST'){
       check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b=body as OrderInput;const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');check(profile&&canServe(profile,serviceType,game.id),`请先通过${serviceType==='escort'?'护航':'组队'}考核并取得该游戏的发单资格`,403);check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
-      if(serviceType==='escort'){check(String(b.task||'').trim().length>=5&&String(b.task).length<=200,'请填写 5～200 字的指定任务及验收标准');check(Number.isInteger(b.taskPrice)&&b.taskPrice!>=100&&b.taskPrice!<=100000,'任务金额应为 1～1000 元');check(b.quantity===1,'护航任务按整单计价');}
+      if(serviceType==='escort'){check(typeof b.task==='string'&&b.task.trim().length>0&&b.task.length<=200,'任务项必须为非空字符串，且不超过 200 字');check(Number.isInteger(b.taskPrice)&&b.taskPrice!>=100&&b.taskPrice!<=100000,'任务金额应为 1～1000 元');check(b.quantity===1,'护航任务按整单计价');}
       const p=b.playerId?db.players.find(p=>p.id===b.playerId):undefined;if(b.playerId)check(p?.userId!==s.userId&&p?.approved&&p.available&&canServe(p,serviceType,game.id),'该队友当前不可预约，请选择其他队友');
       const price=serviceType==='escort'?b.taskPrice!:(p?.price??Math.min(...db.players.filter(p=>p.approved&&canServe(p,'hourly',game.id)).map(p=>p.price)));check(Number.isFinite(price),'该游戏暂未开放此服务');const amount=price*b.quantity;
-      const o:Order={serviceType,task:serviceType==='escort'?String(b.task).trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
+      const o:Order={serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
     }
     else if(/^\/v1\/orders\/[^/]+(?:\/[^/]+)?$/.test(route)){
       const [, , ,orderId,action]=route.split('/');const o=db.orders.find(o=>o.id===orderId);check(o,'订单不存在',404);
