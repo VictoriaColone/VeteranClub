@@ -1,9 +1,9 @@
 import { createMockTransport, ApiError } from './mock';
-import type { ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
+import type { Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
 export class ClubApi {
   constructor(private transport:Transport=createMockTransport(),public session:Session|null=null){}
   private request<T>(method:string,path:string,body?:unknown){return this.transport<T>(method,path,body,this.session?.token);}
-  async login(role:Role){const s=await this.request<Session>('POST','/v1/auth/mock-login',{role});this.session=s;return s;}
+  async login(role:Role,accountId?:string){const s=await this.request<Session>('POST','/v1/auth/mock-login',{role,accountId});this.session=s;return s;}
   async logout(){await this.request('POST','/v1/auth/logout');this.session=null;}
   games(){return this.request<Game[]>('GET','/v1/catalog/games');}
   settings(){return this.request<ClubSettings>('GET','/v1/club');}
@@ -12,6 +12,9 @@ export class ClubApi {
   order(id:string){return this.request<Order>('GET',`/v1/orders/${id}`);}
   createOrder(input:OrderInput){return this.request<Order>('POST','/v1/orders',input);}
   act(id:string,action:string,body?:unknown){return this.request<Order>('POST',`/v1/orders/${id}/${action}`,body);}
+  applications(){return this.request<Application[]>('GET','/v1/applications');}
+  apply(input:{serviceType:ServiceType;gameIds:string[];introduction:string}){return this.request<Application>('POST','/v1/applications',input);}
+  reviewApplication(id:string,input:{status:'assessment'|'approved'|'rejected';score?:number;note:string}){return this.request<Application>('POST',`/v1/admin/applications/${id}/review`,input);}
   availability(available:boolean){return this.request<Player>('POST','/v1/player/availability',{available});}
   wallet(){return this.request<Wallet>('GET','/v1/player/wallet');}
   dashboard(){return this.request<Dashboard>('GET','/v1/admin/dashboard');}

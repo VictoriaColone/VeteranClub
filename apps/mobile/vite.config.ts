@@ -1,4 +1,4 @@
 import { defineConfig } from 'vite';
 import uni from '@dcloudio/vite-plugin-uni';
 const plugin = (uni as any).default || uni;
-export default defineConfig({ plugins: [plugin()], server: {fs: {allow: ['../..']}} });
+export default defineConfig({ plugins: [plugin()], optimizeDeps: {exclude: ['@stellar/core']}, server: {fs: {allow: ['../..']}} });
