@@ -1,5 +1,9 @@
-/* Shared visual language for the uni-app H5 and the operations console. */
-:root, page {
+/* Shared by H5, WeChat Mini Program and the operations console.
+   page is the native MP root; .mobile-app scopes tokens without :root. */
+/* #ifdef H5 */
+:root,
+/* #endif */
+page, .mobile-app {
   --club-bg: #101218;
   --club-surface: #191d26;
   --club-raised: #222733;

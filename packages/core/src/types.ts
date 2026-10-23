@@ -1,3 +1,4 @@
+import {clubTime,formatCompactMoney} from './runtime';
 export interface Product { id:string; userId:string; playerId:string; sellerName:string; gameId:string; serviceType:ServiceType; title:string; description:string; price:number; task:string; active:boolean; createdAt:number }
 export interface ProductInput { gameId:string; serviceType:ServiceType; title:string; description:string; price:number; task?:string }
 export type ServiceType = 'escort' | 'hourly';
@@ -26,8 +27,8 @@ export type Transport = <T>(method: string, path: string, body?: unknown, token?
 export const statusLabels: Record<OrderStatus, string> = {unpaid:'待付款',waiting:'待接单',accepted:'待开始',serving:'服务中',confirming:'待确认',completed:'已完成',cancelled:'已取消'};
 export const roleLabels: Record<Role,string> = {user:'用户',boss:'用户',player:'用户',admin:'管理员',customer_service:'客服',finance:'财务'};
 export const money = (cents: number) => (cents / 100).toFixed(2);
-export const compactMoney = (cents: number) => Number((cents / 100).toFixed(2)).toLocaleString('zh-CN');
-export const time = (value: number) => new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(value);
+export const compactMoney = formatCompactMoney;
+export const time = clubTime;
 export const isStaff = (role: Role) => ['admin','customer_service','finance'].includes(role);
 
 export const orderMembers=(o:Order):TeamMember[]=>o.team?.length?o.team:(o.playerId?[{playerId:o.playerId,name:o.playerName||''}]:[]);

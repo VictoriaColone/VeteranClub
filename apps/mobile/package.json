@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "uni -p h5 --host 127.0.0.1 --port 5174",
     "build": "uni build -p h5",
+    "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin"
   },
   "dependencies": {

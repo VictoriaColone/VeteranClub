@@ -1,4 +1,5 @@
 import { createSeed, createProducts, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION } from './seed';
+import {parseMockPath,shanghaiDay} from './runtime';
 import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
@@ -8,7 +9,7 @@ const can=(s:Session,...roles:Role[])=>check(roles.includes(s.role),'当前身�
 const paid=(o:Order)=>!!o.paidAt;
 const unsettled=(o:Order)=>o.status==='completed'&&o.refundStatus!=='pending'&&orderMembers(o).some(m=>!m.settlementId)&&o.earnings>0;
 const unsettledAmount=(o:Order)=>orderMembers(o).filter(m=>!m.settlementId).reduce((n,m)=>n+participantEarnings(o,m.playerId),0);
-const day=(n:number)=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(n);
+const day=shanghaiDay;
 const id=(prefix:string)=>`${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2,7)}`;
 export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
   function read():Database {
@@ -47,7 +48,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
   function playerOwner(o:Order,s:Session){check(!!s.playerId&&o.playerId===s.playerId,'只能操作分配给自己的订单',403);}
   function expire(db:Database){let changed=false;db.orders.forEach(o=>{if(o.status==='unpaid'&&clock()-o.createdAt>=db.settings.unpaidTimeoutMinutes*60000){o.status='cancelled';o.timeline.push({at:clock(),actor:'系统',label:'超时未支付，订单已关闭'});changed=true;}});if(changed)save(db);}
   function dispatch(method:string,path:string,body:any={},token?:string):ApiResponse<unknown>{
-    const db=read();expire(db);const url=new URL(path,'https://mock.local');const route=url.pathname.replace(/\/$/,'');const q=url.searchParams;let data:unknown;
+    const db=read();expire(db);const {route,query:q}=parseMockPath(path);let data:unknown;
     if(route==='/v1/auth/mock-login'&&method==='POST'){
       const roles:Role[]=['user','boss','player','admin','customer_service','finance'];check(roles.includes(body.role),'请选择有效的演示身份');
       const identities:Record<Role, Omit<Session,'token'|'role'>>={user:{userId:'u-boss',name:'林序',playerId:'p0'},boss:{userId:'u-boss',name:'林序'},player:{userId:'u-player',name:'岚',playerId:'p1'},admin:{userId:'u-admin',name:'陈安'},customer_service:{userId:'u-cs',name:'许知'},finance:{userId:'u-finance',name:'沈禾'}};
@@ -66,7 +67,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       const product:Product={id:id('SP-'),userId:s.userId,playerId:profile.id,sellerName:s.name,gameId:body.gameId,serviceType:body.serviceType,title:body.title.trim(),description:body.description.trim(),price:body.price,task:body.serviceType==='escort'?body.task.trim():'',active:true,createdAt:clock()};db.products!.unshift(product);audit(db,s,'发布商品',product.id,product.title);save(db);data=product;
     }
     else if(/^\/v1\/products\/[^/]+$/.test(route)&&method==='PATCH'){
-      const product=db.products!.find(p=>p.id===route.split('/').at(-1));check(product,'商品不存在',404);check(product.userId===s.userId,'只能管理自己的商品',403);check(typeof body.active==='boolean','商品状态无效');if(body.active)check(profile&&canServe(profile,product.serviceType,product.gameId),'商品上架需要对应考核资格',403);product.active=body.active;audit(db,s,product.active?'上架商品':'下架商品',product.id,product.title);save(db);data=product;
+      const product=db.products!.find(p=>p.id===route.split('/').pop());check(product,'商品不存在',404);check(product.userId===s.userId,'只能管理自己的商品',403);check(typeof body.active==='boolean','商品状态无效');if(body.active)check(profile&&canServe(profile,product.serviceType,product.gameId),'商品上架需要对应考核资格',403);product.active=body.active;audit(db,s,product.active?'上架商品':'下架商品',product.id,product.title);save(db);data=product;
     }
     else if(route==='/v1/orders/grab'&&method==='POST'){
       check(profile&&!isStaff(s.role),'请使用用户账号抢单',403);check(['hourly','escort'].includes(body.serviceType),'请选择订单类型');check(profile.available,'请先开启接单状态');check(profile.approved&&profile.qualifications.includes(body.serviceType),'请先通过对应类型考核',403);if(body.gameId)check(canServe(profile,body.serviceType,body.gameId),'尚未取得该游戏的接单资格',403);check(!db.orders.some(o=>orderMembers(o).some(m=>m.playerId===profile.id)&&['accepted','serving','confirming'].includes(o.status)),'你还有未完成订单，请先完成当前服务');
@@ -133,7 +134,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     else if(route==='/v1/player/availability'&&method==='POST'){check(profile,'用户资料不存在');check(typeof body.available==='boolean','接单状态无效');const p=db.players.find(p=>p.id===s.playerId)!;p.available=body.available;audit(db,s,'接单状态',p.name,p.available?'开始接单':'休息中');save(db);data=p;}
     else if(/^\/v1\/admin\/players\/[^/]+$/.test(route)&&method==='PATCH'){
-      can(s,'admin');const p=db.players.find(p=>p.id===route.split('/').at(-1));check(p,'队友不存在',404);
+      can(s,'admin');const p=db.players.find(p=>p.id===route.split('/').pop());check(p,'队友不存在',404);
       if(body.approved!==undefined){check(body.approved===false,'请通过入驻申请与考核流程授予资格');p.approved=false;p.qualifications=[];p.qualificationGames={};}if(body.available!==undefined){check(typeof body.available==='boolean','接单状态无效');p.available=body.available;}
       if(body.price!==undefined){check(Number.isInteger(body.price)&&body.price>=100&&body.price<=100000,'单价必须在 1～1000 元之间');p.price=body.price;}audit(db,s,'更新队友',p.name,`审核：${p.approved?'通过':'待审'}；可接单：${p.available?'是':'否'}；单价：${p.price/100} 元`);save(db);data=p;
     }

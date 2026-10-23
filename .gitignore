@@ -6,3 +6,7 @@ apps/*/dist/
 .DS_Store
 .env.local
 artifacts/
+apps/mobile/src/components/vendor-ui/
+apps/mobile/src/project.config.json
+apps/mobile/project.private.config.json
+apps/mobile/.env.*.local

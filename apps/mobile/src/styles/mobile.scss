@@ -20,3 +20,35 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .player-grid{display:flex;flex-direction:column;gap:12px;margin-top:16px}.online-tag{position:absolute;bottom:4px;left:4px;right:4px;border-radius:4px;padding:2px 0;background:#eff4e9c9;color:#2c3923;font-size:8px;line-height:1.4;text-align:center;z-index:2}.online-tag.offline{background:#eeeeeed0;color:#747678}.player-card .player-info{padding:0}.hero-banner{min-height:190px;padding:22px}.hero-title{font-size:29px}.hero-spark{font-size:115px;top:38px;right:24px}.hero-sub{margin:8px 0 16px}.player-detail-header .portrait.large{height:95px;width:75px}.qualification-top .type-badge{white-space:normal;max-width:140px;text-align:right}.job-footer .price{white-space:normal}.sheet .role-card>view:nth-child(2){flex:1}
 
 .publish-fab{position:fixed;z-index:22;bottom:calc(96px + env(safe-area-inset-bottom,0px));right:max(20px,calc((100vw - 480px)/2 + 20px));width:54px;height:54px;border-radius:18px;background:var(--club-primary);color:#17200f;box-shadow:0 6px 24px #0005;display:flex;align-items:center;justify-content:center;font-size:32px;line-height:1}.quick-grab-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:19px 16px;margin:22px 0 6px;border:1px solid #b6a4f237;background:linear-gradient(125deg,#2a2639,#22292c);border-radius:16px}.quick-grab-card>view>view{font-size:16px;font-weight:600}.quick-grab-card>view>text{display:block;margin-top:7px;font-size:10px;line-height:1.7;color:var(--club-secondary)}.quick-grab-card .primary{flex-shrink:0}.product-list{display:flex;flex-direction:column;gap:12px;margin-top:16px;padding-bottom:65px}.product-card{display:flex;gap:14px;padding:17px 15px;background:var(--club-surface);border:1px solid var(--club-border);border-radius:16px}.product-game{display:flex;align-items:center;justify-content:center;width:54px;height:70px;flex-shrink:0;border-radius:12px;font-size:31px;font-style:italic;font-weight:700}.product-info{flex:1;min-width:0}.product-title{font-size:15px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}.product-info>.muted{font-size:11px;margin-top:5px;line-height:1.6}.product-seller{display:flex;gap:7px;align-items:center;margin:12px 0;font-size:11px;color:var(--club-secondary)}.seller-avatar{width:24px;height:24px;border-radius:7px;color:#273033;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0}.seller-state{margin-left:auto;font-size:10px;color:#9ebd90}.product-bottom{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}.product-buy{font-size:11px;color:#c4b1ed}.product-provider{display:flex;align-items:center;gap:10px;margin:25px 0}.product-provider .seller-avatar{height:36px;width:36px;font-size:18px}.product-provider>view:nth-child(2){flex:1}.owned-product{padding:16px;border:1px solid var(--club-border);border-radius:13px;margin-top:14px}.owned-product>.muted{margin-top:8px;font-size:11px}.provider-options{max-height:170px;border:1px solid var(--club-border);border-radius:12px;background:#151820}.provider-option{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;width:100%;padding:12px 14px;border-bottom:1px solid #ffffff08;font-size:13px}.provider-option>view>text{display:block;color:var(--club-secondary);font-size:10px;line-height:1.7;margin-top:5px}.provider-option.selected{color:var(--club-primary);background:#d9fd8809}.provider-option>text{font-size:17px}.role-card>view:nth-child(2){min-width:0}.role-card>view:nth-child(2)>text{white-space:normal}.order-scope{gap:6px}.order-scope button{font-size:11px;padding-inline:10px}
+
+/* Native and web surfaces share the same content and tokens. */
+.hero-title-line{display:block}
+.mobile-app{padding-bottom:calc(100px + var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.bottom-nav{height:calc(76px + var(--club-safe-bottom,env(safe-area-inset-bottom,0px)));padding-bottom:calc(12px + var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.publish-fab{bottom:calc(96px + var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.sheet{overflow:hidden;padding-bottom:var(--club-safe-bottom,env(safe-area-inset-bottom,0px))}
+.sheet-scroll{max-height:calc(90vh - 32px - var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.provider-options{height:170px}
+/* #ifdef MP-WEIXIN */
+.is-weixin .topbar{align-items:center;padding-left:20px}
+.is-weixin .wordmark{font-size:18px}
+.is-weixin .star-mark{font-size:29px}
+.is-weixin .wordmark>view:last-child>text{font-size:7px;letter-spacing:2px}
+.is-weixin .sheet-mask{top:0;right:0;bottom:0;left:0}
+.is-weixin .sheet-scroll{max-height:none}
+.is-weixin .sheet-close{z-index:3}
+.is-weixin .publish-fab{right:20px}
+.is-weixin .toast{bottom:calc(100px + var(--club-safe-bottom));width:calc(100% - 40px);max-width:440px}
+/* #endif */
+
+/* Earnings belong to each participating order, rather than a separate tab. */
+.profile-stats>button{flex:1;text-align:center;font-size:11px;color:var(--club-secondary);line-height:1.6;padding:6px 0}
+.profile-stats>button>text{display:block;font-size:23px;font-weight:600;color:var(--club-text);margin-bottom:4px}
+.order-income-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 0 2px;border-top:1px solid var(--club-border);margin-top:12px;font-size:11px;color:var(--club-secondary)}
+.order-income-amount{font-size:16px;font-weight:600;color:var(--club-primary);margin-left:8px}
+.income-state{font-size:10px;line-height:1.6;color:var(--club-secondary);text-align:right}
+.income-state.paid{color:var(--club-primary)}.income-state.frozen{color:var(--club-warning)}
+.personal-income{margin-top:18px;padding:16px;background:var(--club-green-bg);border:1px solid #d9fd8826;border-radius:12px}
+.personal-income-top{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--club-secondary)}
+.personal-income-amount{font-size:28px;color:var(--club-primary);font-weight:600;margin-top:12px}
+.personal-income .detail-row{font-size:10px;align-items:flex-start}.personal-income .detail-row>text:last-child{overflow-wrap:anywhere;max-width:70%;text-align:right}
