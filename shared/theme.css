@@ -1,0 +1,25 @@
+/* Shared visual language for the uni-app H5 and the operations console. */
+:root, page {
+  --club-bg: #101218;
+  --club-surface: #191d26;
+  --club-raised: #222733;
+  --club-border: #2c3341;
+  --club-text: #eef0f6;
+  --club-secondary: #a2aaba;
+  --club-muted: #768196;
+  --club-primary: #d9fd88;
+  --club-primary-hover: #e5ffa9;
+  --club-purple: #baa7f2;
+  --club-purple-bg: #baa7f212;
+  --club-green-bg: #d9fd8810;
+  --club-warning: #e4bc7e;
+  --club-danger: #e5a2a2;
+  --club-radius: 12px;
+  --club-radius-sm: 8px;
+  --club-space-1: 4px;
+  --club-space-2: 8px;
+  --club-space-3: 12px;
+  --club-space-4: 16px;
+  --club-space-5: 24px;
+  --club-space-6: 32px;
+}
