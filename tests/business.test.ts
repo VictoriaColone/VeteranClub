@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockServer, MemoryStorage, ApiError, type Role, type Order, type Session, type Wallet, type Settlement, type Application, type Player, participantEarnings, STORAGE_KEY } from '../packages/core/src/index';
+import { createMockServer, MemoryStorage, ApiError, type Role, type Order, type Session, type Wallet, type Settlement, type Application, type Player, type Product, participantEarnings, STORAGE_KEY } from '../packages/core/src/index';
 function fixture(qualifyPublisher=true){let now=Date.now();const storage=new MemoryStorage();const server=createMockServer(storage,()=>now);const login=(role:Role)=>server.dispatch('POST','/v1/auth/mock-login',{role}).data as Session;const boss=login('boss'),player=login('player'),admin=login('admin'),cs=login('customer_service'),finance=login('finance');const call=<T>(session:Session,method:string,path:string,body?:unknown)=>server.dispatch(method,path,body,session.token).data as T;if(qualifyPublisher){for(const serviceType of ['hourly','escort']){const a=call<Application>(boss,'POST','/v1/applications',{serviceType,gameIds:server.read().games.map(g=>g.id),introduction:'测试用户申请对应游戏的发单与接单资格。'});call(admin,'POST',`/v1/admin/applications/${a.id}/review`,{status:'assessment',note:'资料审核通过并安排专项考核'});call(admin,'POST',`/v1/admin/applications/${a.id}/review`,{status:'approved',score:90,note:'对应类型全部申请游戏考核通过'});}}const create=()=>call<Order>(boss,'POST','/v1/orders',{gameId:'valorant',region:'国服 · 华东',quantity:2});return {server,storage,boss,player,admin,cs,finance,call,create,advance:(ms:number)=>{now+=ms;}};}
 test('用户付款、成员履约、用户确认、财务结算：完整闭环',()=>{const f=fixture();let o=f.create();assert.equal(o.status,'unpaid');o=f.call(f.boss,'POST',`/v1/orders/${o.id}/pay`);assert.equal(o.status,'waiting');o=f.call(f.player,'POST',`/v1/orders/${o.id}/accept`);assert.equal(o.playerId,'p1');o=f.call(f.player,'POST',`/v1/orders/${o.id}/start`);assert.equal(o.status,'serving');f.advance(2*3600000);o=f.call(f.player,'POST',`/v1/orders/${o.id}/finish`,{note:'已完成两小时服务'});assert.equal(o.status,'confirming');o=f.call(f.boss,'POST',`/v1/orders/${o.id}/confirm`);assert.equal(o.status,'completed');const batches=f.call<Settlement[]>(f.finance,'POST','/v1/admin/settlements',{playerId:'p1'});assert.ok(batches.some(b=>b.orderIds.includes(o.id)));const paid=f.call<Settlement>(f.finance,'POST',`/v1/admin/settlements/${batches[0].id}/pay`);assert.equal(paid.status,'paid');const wallet=f.call<Wallet>(f.player,'GET','/v1/player/wallet');assert.equal(wallet.settled,paid.amount);});
 test('重复支付通知不会创建第二笔收款',()=>{const f=fixture(),o=f.create();const first=f.call<Order>(f.boss,'POST',`/v1/orders/${o.id}/pay`);const second=f.call<Order>(f.boss,'POST',`/v1/orders/${o.id}/pay`);assert.equal(second.paymentId,first.paymentId);assert.equal(second.timeline.filter(t=>t.label==='模拟微信支付成功').length,1);});
@@ -28,38 +28,38 @@ test('护航部分退款后重新均分，分配之和始终等于净报酬',()=
 test('旧版模拟数据升级时保留原订单、会话、已结算份额并转换历史文案',()=>{const f=fixture();f.call(f.finance,'POST','/v1/admin/settlements');const db:any=f.server.read();db.schema=1;delete db.applications;db.players.forEach((p:any)=>delete p.qualifications);db.orders.forEach((o:any)=>{delete o.serviceType;delete o.team;delete o.task;});db.orders[0].timeline[0].label='老板下单，打手接单';f.storage.setItem(STORAGE_KEY,JSON.stringify(db));const upgraded=createMockServer(f.storage).read();assert.equal(upgraded.schema,2);assert.equal(upgraded.orders.length,db.orders.length);assert.equal(upgraded.sessions.length,db.sessions.length);assert.equal(upgraded.orders[0].timeline[0].label,'用户下单，队友接单');const settled=upgraded.orders.find(o=>o.settlementId)!;assert.equal(settled.team[0].settlementId,settled.settlementId);assert.doesNotThrow(()=>f.call(f.admin,'GET','/v1/admin/dashboard'));});
 
 for(const serviceType of ['hourly','escort'] as const){
-  test(`${serviceType}：新户、资料审核中、考核中及未通过时均无发单权限`,()=>{
+  test(`${serviceType}：新户、资料审核中、考核中及未通过时均无商品发布权限`,()=>{
     const f=fixture(false),user=loginUser(f,'u-boss');
-    const input={serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800};
-    const blocked=()=>assert.throws(()=>f.call(user,'POST','/v1/orders',input),(e:unknown)=>e instanceof ApiError&&e.code===403&&e.message.includes('发单资格'));
+    const input={serviceType,gameId:'valorant',title:'测试服务商品',description:'认真提供对应类型的游戏服务',price:12800,task:'100w纯带出'};
+    const blocked=()=>assert.throws(()=>f.call(user,'POST','/v1/products',input),(e:unknown)=>e instanceof ApiError&&e.code===403&&e.message.includes('商品发布资格'));
     assert.deepEqual(f.server.read().players.find(p=>p.userId===user.userId)!.qualifications,[]);blocked();
     const application=f.call<Application>(user,'POST','/v1/applications',{serviceType,gameIds:['valorant'],introduction:'申请无畏契约对应类型的发单与接单考核。'});blocked();
     f.call(f.admin,'POST',`/v1/admin/applications/${application.id}/review`,{status:'assessment',note:'资料审核通过，等待专项考核'});blocked();
     f.call(f.admin,'POST',`/v1/admin/applications/${application.id}/review`,{status:'rejected',note:'本次考核未达到通过标准'});blocked();
   });
-  test(`${serviceType}：考核仅解锁该类型及游戏的发单、接单权限，另一类型保持锁定`,()=>{
+  test(`${serviceType}：考核仅解锁该类型及游戏的商品发布、接单权限，另一类型保持锁定`,()=>{
     const f=fixture(false),user=loginUser(f,'u-boss'),other=loginUser(f,'u-p7');
-    const input=(type:string,gameId='valorant')=>({serviceType:type,gameId,region:gameId==='valorant'?'国服 · 华东':'艾欧尼亚',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800});
+    const input=(type:string,gameId='valorant')=>({serviceType:type,gameId,region:gameId==='valorant'?'国服 · 华东':'艾欧尼亚',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800,title:'测试服务商品',description:'认真提供对应类型的游戏服务',price:12800});
     const application=f.call<Application>(user,'POST','/v1/applications',{serviceType,gameIds:['valorant'],introduction:'申请无畏契约对应类型的发单与接单考核。'});
     f.call(f.admin,'POST',`/v1/admin/applications/${application.id}/review`,{status:'assessment',note:'资料审核通过，安排专项考核'});
     f.call(f.admin,'POST',`/v1/admin/applications/${application.id}/review`,{status:'approved',score:90,note:'本次申请游戏的专项考核通过'});
-    assert.equal(f.call<Order>(user,'POST','/v1/orders',input(serviceType)).serviceType,serviceType);
-    assert.throws(()=>f.call(user,'POST','/v1/orders',input(serviceType,'lol')),/发单资格/);
+    assert.equal(f.call<Product>(user,'POST','/v1/products',input(serviceType)).serviceType,serviceType);
+    assert.throws(()=>f.call(user,'POST','/v1/products',input(serviceType,'lol')),/商品发布资格/);
     const otherType=serviceType==='hourly'?'escort':'hourly';
-    assert.throws(()=>f.call(user,'POST','/v1/orders',input(otherType)),/发单资格/);
+    assert.throws(()=>f.call(user,'POST','/v1/products',input(otherType)),/商品发布资格/);
     const accepted=f.call<Order>(other,'POST','/v1/orders',input(serviceType));f.call(other,'POST',`/v1/orders/${accepted.id}/pay`);
     const locked=f.call<Order>(other,'POST','/v1/orders',input(otherType));f.call(other,'POST',`/v1/orders/${locked.id}/pay`);
     f.call(user,'POST','/v1/player/availability',{available:true});
     assert.throws(()=>f.call(user,'POST',`/v1/orders/${locked.id}/accept`),/审核/);
     assert.equal(f.call<Order>(user,'POST',`/v1/orders/${accepted.id}/accept`).playerId,'p0');
     f.call(f.admin,'PATCH','/v1/admin/players/p0',{approved:false});
-    assert.throws(()=>f.call(user,'POST','/v1/orders',input(serviceType)),/发单资格/);
+    assert.throws(()=>f.call(user,'POST','/v1/products',input(serviceType)),/商品发布资格/);
   });
 }
 
-test('既有未付款订单不能在资格撤销后通过支付绕过发单检查，重复已支付回调仍保持幂等',()=>{const f=fixture();const unpaid=f.create(),paid=f.create();f.call(f.boss,'POST',`/v1/orders/${paid.id}/pay`);f.call(f.admin,'PATCH','/v1/admin/players/p0',{approved:false});assert.throws(()=>f.call(f.boss,'POST',`/v1/orders/${unpaid.id}/pay`),/发单资格/);assert.equal(f.call<Order>(f.admin,'GET',`/v1/orders/${unpaid.id}`).status,'unpaid');assert.equal(f.call<Order>(f.boss,'POST',`/v1/orders/${paid.id}/pay`).status,'waiting');});
+test('普通新户可快速下单及模拟支付，客户资格撤销不影响其购物权限',()=>{const f=fixture(false);for(const serviceType of ['hourly','escort']){const o=f.call<Order>(f.boss,'POST','/v1/orders',{serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'100w纯带出',taskPrice:12800});assert.equal(f.call<Order>(f.boss,'POST',`/v1/orders/${o.id}/pay`).status,'waiting');assert.equal(f.call<Order>(f.boss,'POST',`/v1/orders/${o.id}/pay`).status,'waiting');}assert.throws(()=>f.call(f.boss,'POST','/v1/products',{serviceType:'hourly',gameId:'valorant',title:'尚未认证商品',description:'未通过考核不能发布该商品',price:6800}),/商品发布资格/);});
 
-test('四种资格状态均可独立保存，单资格用户仅可发接对应类型订单',()=>{
+test('四种资格状态均可独立保存，单资格用户仅可发布对应类型商品、接取对应类型订单',()=>{
   const f=fixture(false),publisher=loginUser(f,'u-p7');
   const profiles=f.server.read().players;
   assert.deepEqual(profiles.find(p=>p.userId==='u-boss')!.qualifications,[]);
@@ -68,17 +68,17 @@ test('四种资格状态均可独立保存，单资格用户仅可发接对应�
   assert.deepEqual(profiles.find(p=>p.userId==='u-player')!.qualifications,['hourly','escort']);
   for(const [accountId,allowed,locked] of [['u-hourly','hourly','escort'],['u-escort','escort','hourly']]){
     const user=loginUser(f,accountId);
-    const input=(serviceType:string)=>({serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800});
-    assert.equal(f.call<Order>(user,'POST','/v1/orders',input(allowed)).serviceType,allowed);
-    assert.throws(()=>f.call(user,'POST','/v1/orders',input(locked)),/发单资格/);
+    const input=(serviceType:string)=>({serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'完成指定任务并成功撤离',taskPrice:12800,title:'测试服务商品',description:'认真提供对应类型的游戏服务',price:12800});
+    assert.equal(f.call<Product>(user,'POST','/v1/products',input(allowed)).serviceType,allowed);
+    assert.throws(()=>f.call(user,'POST','/v1/products',input(locked)),/商品发布资格/);
     const lockedOrder=f.call<Order>(publisher,'POST','/v1/orders',input(locked));f.call(publisher,'POST',`/v1/orders/${lockedOrder.id}/pay`);
     assert.throws(()=>f.call(user,'POST',`/v1/orders/${lockedOrder.id}/accept`),/审核/);
     const allowedOrder=f.call<Order>(publisher,'POST','/v1/orders',input(allowed));f.call(publisher,'POST',`/v1/orders/${allowedOrder.id}/pay`);
     assert.equal(f.call<Order>(user,'POST',`/v1/orders/${allowedOrder.id}/accept`).playerId,profiles.find(p=>p.userId===accountId)!.id);
     const app=f.call<Application>(user,'POST','/v1/applications',{serviceType:locked,gameIds:['valorant'],introduction:'独立申请尚未开通类型的专项考核资格。'});
     f.call(f.admin,'POST',`/v1/admin/applications/${app.id}/review`,{status:'rejected',note:'本次新方向考核未通过'});
-    assert.equal(f.call<Order>(user,'POST','/v1/orders',input(allowed)).serviceType,allowed);
-    assert.throws(()=>f.call(user,'POST','/v1/orders',input(locked)),/发单资格/);
+    assert.equal(f.call<Product>(user,'POST','/v1/products',input(allowed)).serviceType,allowed);
+    assert.throws(()=>f.call(user,'POST','/v1/products',input(locked)),/商品发布资格/);
   }
 });
 test('单资格样例升级不覆盖已有用户资格、游戏范围、订单和审核记录',()=>{
@@ -111,3 +111,28 @@ test('新样例护航任务统一默认100w纯带出，旧目录迁移保留自�
   const migrated=f.server.read();const o=migrated.orders.find(o=>o.id===original.id)!;assert.equal(o.gameName,'三角洲');assert.equal(o.gameId,'delta');assert.equal(o.task,'100w纯带出');assert.deepEqual({amount:o.amount,earnings:o.earnings,status:o.status,team:o.team},financial);assert.equal(migrated.orders.find(o=>o.id===custom.id)!.task,custom.task);assert.ok(o.timeline.some(e=>e.label==='演示游戏配置已更新'));
   assert.deepEqual(migrated.players.find(p=>p.id==='p0')!.gameIds,['delta','valorant']);assert.deepEqual(migrated.players.find(p=>p.id==='p0')!.qualificationGames,{hourly:['delta'],escort:['delta']});assert.equal(f.server.read().orders.find(v=>v.id===o.id)!.timeline.length,o.timeline.length);
 });
+
+const goodsInput=(serviceType='hourly',gameId='valorant')=>({serviceType,gameId,title:'默契游戏服务',description:'认真沟通，按约定完成对应游戏服务。',price:serviceType==='hourly'?9900:12800,task:'100w纯带出'});
+test('发布商品独立于订单和钱包，能持久化、上下架且只能本人管理',()=>{
+  const f=fixture(false);const before=f.server.read();const p=f.call<Product>(f.player,'POST','/v1/products',goodsInput());const after=f.server.read();assert.equal(after.orders.length,before.orders.length);assert.equal(after.settlements.length,before.settlements.length);assert.equal(p.playerId,'p1');assert.equal(p.price,9900);assert.equal(p.task,'');assert.ok(f.call<Product[]>(f.boss,'GET','/v1/products').some(v=>v.id===p.id));assert.ok(f.call<Product[]>(f.player,'GET','/v1/products?scope=mine').some(v=>v.id===p.id));
+  assert.throws(()=>f.call(f.boss,'PATCH',`/v1/products/${p.id}`,{active:false}),/自己的商品/);f.call(f.player,'PATCH',`/v1/products/${p.id}`,{active:false});assert.ok(!f.call<Product[]>(f.boss,'GET','/v1/products').some(v=>v.id===p.id));f.call(f.player,'PATCH',`/v1/products/${p.id}`,{active:true});assert.ok(f.call<Product[]>(f.boss,'GET','/v1/products').some(v=>v.id===p.id));
+});
+test('商品下单快照采用服务端商品价格、任务和服务成员，不能篡改或购买自己商品',()=>{
+  const f=fixture(false),provider=loginUser(f,'u-escort');const product=f.call<Product>(provider,'POST','/v1/products',goodsInput('escort','delta'));
+  const input={productId:product.id,serviceType:'escort',gameId:'delta',region:'国服',quantity:1,task:'恶意替换任务',taskPrice:100};const order=f.call<Order>(f.boss,'POST','/v1/orders',input);assert.equal(order.amount,product.price);assert.equal(order.task,product.task);assert.equal(order.preferredPlayerId,product.playerId);assert.equal(order.productTitle,product.title);assert.throws(()=>f.call(provider,'POST','/v1/orders',input),/不可预约/);
+  assert.throws(()=>f.call(f.boss,'POST','/v1/orders',{...input,playerId:'p1'}),/服务成员不匹配/);assert.throws(()=>f.call(f.boss,'POST','/v1/orders',{...input,gameId:'valorant'}),/不一致/);f.call(provider,'PATCH',`/v1/products/${product.id}`,{active:false});assert.throws(()=>f.call(f.boss,'POST',`/v1/orders/${order.id}/pay`),/下架/);assert.throws(()=>f.call(f.boss,'POST','/v1/orders',input),/下架/);
+});
+test('公共大厅排除所有指定成员订单，指定人只能从自己的邀请中接受',()=>{
+  const f=fixture(false);const input={serviceType:'hourly',gameId:'valorant',region:'国服 · 华东',quantity:1};const publicOrder=f.call<Order>(f.boss,'POST','/v1/orders',input),privateOrder=f.call<Order>(f.boss,'POST','/v1/orders',{...input,playerId:'p1'});for(const o of [publicOrder,privateOrder])f.call(f.boss,'POST',`/v1/orders/${o.id}/pay`);
+  const list=f.call<Order[]>(f.player,'GET','/v1/orders?scope=hall');assert.ok(list.some(o=>o.id===publicOrder.id));assert.ok(list.every(o=>!o.preferredPlayerId));assert.ok(!list.some(o=>o.id===privateOrder.id));assert.ok(f.call<Order[]>(f.player,'GET','/v1/orders').some(o=>o.id===privateOrder.id));assert.equal(f.call<Order>(f.player,'GET',`/v1/orders/${privateOrder.id}`).id,privateOrder.id);assert.throws(()=>f.call(loginUser(f,'u-hourly'),'GET',`/v1/orders/${privateOrder.id}`),/无权/);assert.equal(f.call<Order>(f.player,'POST',`/v1/orders/${privateOrder.id}/accept`).playerId,'p1');
+});
+test('立即抢单遵守游戏、类型、公开状态、占单及资格，不能重复抢取',()=>{
+  const f=fixture(false);const user=loginUser(f,'u-hourly');const input={serviceType:'hourly',gameId:'valorant',region:'国服 · 华东',quantity:1};const privateOrder=f.call<Order>(f.boss,'POST','/v1/orders',{...input,playerId:'p-hourly'});f.call(f.boss,'POST',`/v1/orders/${privateOrder.id}/pay`);const publicOrder=f.call<Order>(f.boss,'POST','/v1/orders',input);f.call(f.boss,'POST',`/v1/orders/${publicOrder.id}/pay`);
+  assert.throws(()=>f.call(f.boss,'POST','/v1/orders/grab',{serviceType:'hourly',gameId:'valorant'}),/开启接单|考核/);assert.throws(()=>f.call(user,'POST','/v1/orders/grab',{serviceType:'escort',gameId:'valorant'}),/考核/);const accepted=f.call<Order>(user,'POST','/v1/orders/grab',{serviceType:'hourly',gameId:'valorant'});assert.equal(accepted.id,publicOrder.id);assert.equal(accepted.preferredPlayerId,undefined);assert.equal(accepted.playerId,'p-hourly');assert.throws(()=>f.call(user,'POST','/v1/orders/grab',{serviceType:'hourly',gameId:'valorant'}),/未完成订单/);assert.equal(f.call<Order>(f.admin,'GET',`/v1/orders/${privateOrder.id}`).status,'waiting');
+});
+test('商品资格撤销后不再公开展示或上架，旧版升级补充商品但不重置业务数据',()=>{
+  const f=fixture(false);const product=f.call<Product>(f.player,'POST','/v1/products',goodsInput());f.call(f.admin,'PATCH','/v1/admin/players/p1',{approved:false});assert.ok(!f.call<Product[]>(f.boss,'GET','/v1/products').some(p=>p.id===product.id));assert.throws(()=>f.call(f.player,'PATCH',`/v1/products/${product.id}`,{active:true}),/考核资格/);
+  const before=f.server.read();delete before.products;f.storage.setItem(STORAGE_KEY,JSON.stringify(before));const upgraded=f.server.read();assert.ok(upgraded.products!.length>0);assert.deepEqual(upgraded.orders,before.orders);assert.deepEqual(upgraded.sessions,before.sessions);assert.deepEqual(upgraded.applications,before.applications);
+});
+
+test('组队商品价格按所选小时数快照计费，指定商品订单不进入公共大厅',()=>{const f=fixture(false);const p=f.call<Product>(f.player,'POST','/v1/products',goodsInput('hourly'));const o=f.call<Order>(f.boss,'POST','/v1/orders',{productId:p.id,serviceType:'hourly',gameId:p.gameId,region:'国服 · 华东',quantity:3,taskPrice:1});assert.equal(o.amount,29700);assert.equal(o.unitPrice,9900);assert.equal(o.quantity,3);assert.equal(o.task,'');f.call(f.boss,'POST',`/v1/orders/${o.id}/pay`);assert.ok(!f.call<Order[]>(f.player,'GET','/v1/orders?scope=hall').some(v=>v.id===o.id));});

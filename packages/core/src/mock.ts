@@ -1,5 +1,5 @@
-import { createSeed, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION } from './seed';
-import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
+import { createSeed, createProducts, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION } from './seed';
+import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
 const clone=<T>(data:T):T=>JSON.parse(JSON.stringify(data));
@@ -34,6 +34,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
           db.orders.forEach(o=>{if(legacy[o.gameId]){const old=o.gameName;o.gameId='delta';o.gameName='三角洲';o.region='国服';o.timeline.push({at:clock(),actor:'系统',label:'演示游戏配置已更新',note:old+' → 三角洲'});}if(o.serviceType==='escort'&&(!o.task||o.task==='完成指定地图任务并成功撤离'))o.task=DEFAULT_ESCORT_TASK;});
           db.catalogRevision=CATALOG_REVISION;changed=true;
         }
+        if(!Array.isArray(db.products)){db.products=createProducts(db.players,db.games,clock());changed=true;}
         if(changed)storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
       }
     }catch{/* recreate corrupt demo data */}}
@@ -57,11 +58,26 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     else if(route==='/v1/catalog/games'&&method==='GET')data=db.games;
     else if(route==='/v1/club'&&method==='GET')data=db.settings;
     else if(route==='/v1/players'&&method==='GET'){data=db.players.filter(p=>(isStaff(s.role)||p.approved||p.userId===s.userId)&&(!q.get('gameId')||p.gameIds.includes(q.get('gameId')!))).map(p=>({...p,busy:db.orders.some(o=>orderMembers(o).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(o.status))}));}
+    else if(route==='/v1/products'&&method==='GET'){
+      data=(db.products||[]).filter(product=>q.get('scope')==='mine'?product.userId===s.userId:product.active&&db.players.some(p=>p.id===product.playerId&&canServe(p,product.serviceType,product.gameId))).sort((a,b)=>b.createdAt-a.createdAt);
+    }
+    else if(route==='/v1/products'&&method==='POST'){
+      check(profile&&!isStaff(s.role),'请使用用户账号发布商品',403);check(['hourly','escort'].includes(body.serviceType),'请选择商品类型');check(db.games.some(g=>g.id===body.gameId),'请选择有效游戏');check(canServe(profile,body.serviceType,body.gameId),'请先通过对应类型及游戏的考核，取得商品发布资格',403);check(typeof body.title==='string'&&body.title.trim().length>=2&&body.title.length<=40,'商品标题应为 2～40 字');check(typeof body.description==='string'&&body.description.trim().length>=5&&body.description.length<=200,'商品说明应为 5～200 字');check(Number.isInteger(body.price)&&body.price>=100&&body.price<=100000,'商品价格应为 1～1000 元');if(body.serviceType==='escort')check(typeof body.task==='string'&&body.task.trim().length>0&&body.task.length<=200,'任务项必须为非空字符串，且不超过 200 字');
+      const product:Product={id:id('SP-'),userId:s.userId,playerId:profile.id,sellerName:s.name,gameId:body.gameId,serviceType:body.serviceType,title:body.title.trim(),description:body.description.trim(),price:body.price,task:body.serviceType==='escort'?body.task.trim():'',active:true,createdAt:clock()};db.products!.unshift(product);audit(db,s,'发布商品',product.id,product.title);save(db);data=product;
+    }
+    else if(/^\/v1\/products\/[^/]+$/.test(route)&&method==='PATCH'){
+      const product=db.products!.find(p=>p.id===route.split('/').at(-1));check(product,'商品不存在',404);check(product.userId===s.userId,'只能管理自己的商品',403);check(typeof body.active==='boolean','商品状态无效');if(body.active)check(profile&&canServe(profile,product.serviceType,product.gameId),'商品上架需要对应考核资格',403);product.active=body.active;audit(db,s,product.active?'上架商品':'下架商品',product.id,product.title);save(db);data=product;
+    }
+    else if(route==='/v1/orders/grab'&&method==='POST'){
+      check(profile&&!isStaff(s.role),'请使用用户账号抢单',403);check(['hourly','escort'].includes(body.serviceType),'请选择订单类型');check(profile.available,'请先开启接单状态');check(profile.approved&&profile.qualifications.includes(body.serviceType),'请先通过对应类型考核',403);if(body.gameId)check(canServe(profile,body.serviceType,body.gameId),'尚未取得该游戏的接单资格',403);check(!db.orders.some(o=>orderMembers(o).some(m=>m.playerId===profile.id)&&['accepted','serving','confirming'].includes(o.status)),'你还有未完成订单，请先完成当前服务');
+      const candidate=db.orders.filter(o=>o.status==='waiting'&&paid(o)&&!o.preferredPlayerId&&o.refundStatus!=='pending'&&o.bossId!==s.userId&&o.serviceType===body.serviceType&&(!body.gameId||o.gameId===body.gameId)&&canServe(profile,o.serviceType,o.gameId)).sort((a,b)=>a.createdAt-b.createdAt)[0];check(candidate,'当前筛选下暂无可抢公共单，请稍后再试',404);return dispatch('POST',`/v1/orders/${candidate.id}/accept`,{},token);
+    }
     else if(route==='/v1/orders'&&method==='GET'){
       const scope=q.get('scope')||'mine';let list=db.orders;
+      if(scope==='hall')list=list.filter(o=>o.status==='waiting'&&paid(o)&&!o.preferredPlayerId&&o.refundStatus!=='pending');
       if(!isStaff(s.role)){
-        if(scope==='hall')list=list.filter(o=>o.bossId!==s.userId&&o.status==='waiting'&&o.refundStatus!=='pending'&&(!o.preferredPlayerId||o.preferredPlayerId===s.playerId));
-        else list=list.filter(o=>o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId));
+        if(scope==='hall')list=list.filter(o=>o.bossId!==s.userId);
+        else list=list.filter(o=>o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId)||(o.status==='waiting'&&o.preferredPlayerId===s.playerId));
       }
       if(q.get('serviceType'))list=list.filter(o=>o.serviceType===q.get('serviceType'));
       if(q.get('status')&&q.get('status')!=='all')list=list.filter(o=>o.status===q.get('status'));
@@ -71,18 +87,18 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       data=list.sort((a,b)=>b.createdAt-a.createdAt);
     }
     else if(route==='/v1/orders'&&method==='POST'){
-      check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b=body as OrderInput;const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');check(profile&&canServe(profile,serviceType,game.id),`请先通过${serviceType==='escort'?'护航':'组队'}考核并取得该游戏的发单资格`,403);check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
+      check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b={...body} as OrderInput;const product=b.productId?db.products!.find(p=>p.id===b.productId):undefined;if(b.productId){check(product?.active,'商品已下架或不存在');check(b.gameId===product.gameId&&b.serviceType===product.serviceType,'商品游戏或类型与订单不一致');check(!b.playerId||b.playerId===product.playerId,'商品服务成员不匹配');b.playerId=product.playerId;b.taskPrice=product.price;if(product.serviceType==='escort')b.task=product.task;}const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
       if(serviceType==='escort'){check(typeof b.task==='string'&&b.task.trim().length>0&&b.task.length<=200,'任务项必须为非空字符串，且不超过 200 字');check(Number.isInteger(b.taskPrice)&&b.taskPrice!>=100&&b.taskPrice!<=100000,'任务金额应为 1～1000 元');check(b.quantity===1,'护航任务按整单计价');}
       const p=b.playerId?db.players.find(p=>p.id===b.playerId):undefined;if(b.playerId)check(p?.userId!==s.userId&&p?.approved&&p.available&&canServe(p,serviceType,game.id),'该队友当前不可预约，请选择其他队友');
-      const price=serviceType==='escort'?b.taskPrice!:(p?.price??Math.min(...db.players.filter(p=>p.approved&&canServe(p,'hourly',game.id)).map(p=>p.price)));check(Number.isFinite(price),'该游戏暂未开放此服务');const amount=price*b.quantity;
-      const o:Order={serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
+      const price=product?.price??(serviceType==='escort'?b.taskPrice!:(p?.price??Math.min(...db.players.filter(p=>p.approved&&canServe(p,'hourly',game.id)).map(p=>p.price))));check(Number.isFinite(price),'该游戏暂未开放此服务');const amount=price*b.quantity;
+      const o:Order={productId:product?.id,productTitle:product?.title,serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
     }
     else if(/^\/v1\/orders\/[^/]+(?:\/[^/]+)?$/.test(route)){
       const [, , ,orderId,action]=route.split('/');const o=db.orders.find(o=>o.id===orderId);check(o,'订单不存在',404);
-      if(method==='GET'&&!action){check(isStaff(s.role)||o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId),'无权查看该订单',403);data=o;}
+      if(method==='GET'&&!action){check(isStaff(s.role)||o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId)||(o.status==='waiting'&&o.preferredPlayerId===s.playerId),'无权查看该订单',403);data=o;}
       else if(method==='POST'){
         if(action==='pay'){
-          owner(o,s);if(paid(o)){data=o;}else{check(profile&&canServe(profile,o.serviceType,o.gameId),'尚未取得该类型与游戏的发单资格，不能支付发布订单',403);check(o.status==='unpaid','订单已关闭，无法支付');o.status='waiting';o.paidAt=clock();o.paymentId=id('WXMOCK-');event(o,s,'模拟微信支付成功');audit(db,s,'模拟支付',o.id,`支付 ${(o.amount/100).toFixed(2)} 元`);data=o;}
+          owner(o,s);if(paid(o)){data=o;}else{if(o.productId){const product=db.products!.find(p=>p.id===o.productId);const seller=db.players.find(p=>p.id===product?.playerId);check(product?.active&&seller&&canServe(seller,o.serviceType,o.gameId),'商品已下架或服务资格已失效，无法付款');}check(o.status==='unpaid','订单已关闭，无法支付');o.status='waiting';o.paidAt=clock();o.paymentId=id('WXMOCK-');event(o,s,'模拟微信支付成功');audit(db,s,'模拟支付',o.id,`支付 ${(o.amount/100).toFixed(2)} 元`);data=o;}
         }else if(action==='accept'||action==='assign'){
           if(action==='accept')check(!isStaff(s.role),'员工账号不能接单',403);else can(s,'admin','customer_service');check(['waiting','accepted'].includes(o.status),'该订单当前不可接单或改派');check(o.refundStatus!=='pending','售后处理中，暂不可派单');
           const pid=action==='accept'?s.playerId:body.playerId;const p=db.players.find(p=>p.id===pid);check(p?.approved&&p.available&&canServe(p,o.serviceType,o.gameId),'队友未通过审核、已休息或不支持该游戏');

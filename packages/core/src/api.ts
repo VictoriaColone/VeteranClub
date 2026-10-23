@@ -1,5 +1,5 @@
 import { createMockTransport, ApiError } from './mock';
-import type { Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
+import type { Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
 export class ClubApi {
   constructor(private transport:Transport=createMockTransport(),public session:Session|null=null){}
   private request<T>(method:string,path:string,body?:unknown){return this.transport<T>(method,path,body,this.session?.token);}
@@ -12,6 +12,10 @@ export class ClubApi {
   order(id:string){return this.request<Order>('GET',`/v1/orders/${id}`);}
   createOrder(input:OrderInput){return this.request<Order>('POST','/v1/orders',input);}
   act(id:string,action:string,body?:unknown){return this.request<Order>('POST',`/v1/orders/${id}/${action}`,body);}
+  products(scope:'public'|'mine'='public'){return this.request<Product[]>('GET',`/v1/products?scope=${scope}`);}
+  publishProduct(input:ProductInput){return this.request<Product>('POST','/v1/products',input);}
+  updateProduct(id:string,active:boolean){return this.request<Product>('PATCH',`/v1/products/${id}`,{active});}
+  grab(input:{gameId?:string;serviceType:ServiceType}){return this.request<Order>('POST','/v1/orders/grab',input);}
   applications(){return this.request<Application[]>('GET','/v1/applications');}
   apply(input:{serviceType:ServiceType;gameIds:string[];introduction:string}){return this.request<Application>('POST','/v1/applications',input);}
   reviewApplication(id:string,input:{status:'assessment'|'approved'|'rejected';score?:number;note:string}){return this.request<Application>('POST',`/v1/admin/applications/${id}/review`,input);}

@@ -19,10 +19,14 @@
 | GET | `/v1/club` | 俱乐部公开配置 | 已登录 |
 | GET | `/v1/catalog/games` | 游戏和区服列表 | 已登录 |
 | GET | `/v1/players?gameId=` | 用户能看到认证成员与自己的档案 | 已登录 |
-| POST | `/v1/orders` | `{serviceType,gameId,region,playerId?,quantity,task?,taskPrice?,note?}` | 通过对应类型与游戏考核的用户 |
+| GET | `/v1/products?scope=public/mine` | 在售目录或本人商品 | 用户 |
+| POST | `/v1/products` | `{gameId,serviceType,title,description,price,task?}`，价格为分 | 对应资格用户 |
+| PATCH | `/v1/products/:id` | `{active}`，商品上下架 | 本人 |
+| POST | `/v1/orders/grab` | `{serviceType,gameId?}`，接取最早可接公共单 | 对应资格用户 |
+| POST | `/v1/orders` | `{serviceType,gameId,region,playerId?,productId?,quantity,task?,taskPrice?,note?}` | 所有用户（无需考核） |
 | GET | `/v1/orders` | `scope,status,serviceType,gameId,query,refund` | 服务端自动限制数据归属 |
 | GET | `/v1/orders/:id` | 订单、金额、服务动态 | 下单用户／全部协作成员／员工 |
-| POST | `/v1/orders/:id/pay` | 模拟支付；首次支付发布需对应发单资格，重复已支付调用幂等 | 订单下单用户 |
+| POST | `/v1/orders/:id/pay` | 模拟支付；重复调用幂等，商品订单付款前重新核验商品及发布者资格 | 订单下单用户 |
 | POST | `/v1/orders/:id/accept` | 认领订单与占用接单容量 | 匹配成员 |
 | POST | `/v1/orders/:id/assign` | `{playerId,reason?}` | 客服／管理员 |
 | POST | `/v1/orders/:id/start` | 开始服务 | 接单负责人 |
@@ -65,10 +69,18 @@ unpaid → cancelled
 
 `serviceType` 为 `escort`（护航）或 `hourly`（组队），与游戏独立。护航按整单金额 `taskPrice`（分，100～100000）计价，`quantity=1`，任务项 `task` 必须是非空字符串，最多 200 字；模拟样例默认 `100w纯带出`，可以修改；组队按单价和 1～8 小时时长计费。开始时写入 `startedAt`；时长未满拒绝提交，护航提交需 `taskCompleted:true` 和完成记录。
 
-新用户默认无组队、护航的发单及接单资格。创建与接取订单均按服务方向和考核游戏检查，未通过时返回 403；不能接取自己发布的订单。入驻流程：提交 → 资料审核 → 专项考核 → 录入成绩（60～100 分）后开通该类型及游戏的发单与接单权限。拒绝后可重新申请。
+新用户默认无组队、护航的商品发布及接单资格。发布商品与接取订单按服务方向、考核游戏检查，未通过返回 403；普通用户下单和支付无需资格。不能接取自己的订单。入驻流程：提交 → 资料审核 → 专项考核 → 录入成绩（60～100 分）后开通该类型及游戏的商品发布与接单权限。拒绝后可重新申请。
 
 `team` 包含负责人及副手，副手也必须通过护航与该游戏考核、在线且无未完成订单。开始后禁止添加和移除成员。团队全员能查看并在“我参与的”中看到订单；开始、完成及团队管理仅负责人执行。
 
 `earnings` 为团队净报酬，`participantEarnings` 按人数均分；尾差按名单顺序每人补一分，保证金额守恒。成员份额分别记录 `team[].settlementId`，任一份额结算即禁止整单新退款。钱包和批次按本人份额统计。部分退款在结算前按原费率重算，再重新均分。
 
 当前游戏目录：`delta`（三角洲，区服“国服”）、`valorant`（无畏契约）、`lol`（英雄联盟）。创建订单、申请考核只能使用目录中有效游戏；已移除的 `hok`、`pubg` 不再接受新发布。组队任务字段归为空字符串，仅按 `quantity` 小时履约；护航 `task` 拒绝缺省、空白及非字符串值，不会在接口中静默补默认任务。
+
+## 商品、快速下单和公共大厅
+
+商品包含发布者、游戏、服务类型、标题、说明、价格与护航任务项。发布本身不改变订单或钱包。`productId` 下单时从服务端核验商品在售、资格有效，强制绑定商品发布者、价格与任务，防止客户端篡改；订单保留商品标题与价格快照。已下架或资格失效商品不能创建新订单或支付未付款商品订单。
+
+快速订单默认无 `playerId`，付款后进入公共大厅。指定 `playerId` 或购买指定商品的订单不会出现在 `scope=hall` 中，而在对应成员本人订单列表中作为待接受邀请返回。仅指定成员及下单用户／员工可查看，其他用户不可查看。
+
+公共大厅仅返回已付款、待接单、无指定成员且无待审售后的订单。抢单接口同步执行筛选和接取，排除本人订单，校验服务类型、游戏、在线状态及未完成订单容量。Mock 使用同源 Web Locks 串行化；真实后端必须使用数据库事务和唯一约束保证竞争下只有一个成功者。
