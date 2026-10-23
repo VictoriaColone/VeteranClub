@@ -58,7 +58,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       data=list.sort((a,b)=>b.createdAt-a.createdAt);
     }
     else if(route==='/v1/orders'&&method==='POST'){
-      check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b=body as OrderInput;const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
+      check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b=body as OrderInput;const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');check(profile&&canServe(profile,serviceType,game.id),`请先通过${serviceType==='escort'?'护航':'组队'}考核并取得该游戏的发单资格`,403);check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
       if(serviceType==='escort'){check(String(b.task||'').trim().length>=5&&String(b.task).length<=200,'请填写 5～200 字的指定任务及验收标准');check(Number.isInteger(b.taskPrice)&&b.taskPrice!>=100&&b.taskPrice!<=100000,'任务金额应为 1～1000 元');check(b.quantity===1,'护航任务按整单计价');}
       const p=b.playerId?db.players.find(p=>p.id===b.playerId):undefined;if(b.playerId)check(p?.userId!==s.userId&&p?.approved&&p.available&&canServe(p,serviceType,game.id),'该队友当前不可预约，请选择其他队友');
       const price=serviceType==='escort'?b.taskPrice!:(p?.price??Math.min(...db.players.filter(p=>p.approved&&canServe(p,'hourly',game.id)).map(p=>p.price)));check(Number.isFinite(price),'该游戏暂未开放此服务');const amount=price*b.quantity;
@@ -69,7 +69,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       if(method==='GET'&&!action){check(isStaff(s.role)||o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId),'无权查看该订单',403);data=o;}
       else if(method==='POST'){
         if(action==='pay'){
-          owner(o,s);if(paid(o)){data=o;}else{check(o.status==='unpaid','订单已关闭，无法支付');o.status='waiting';o.paidAt=clock();o.paymentId=id('WXMOCK-');event(o,s,'模拟微信支付成功');audit(db,s,'模拟支付',o.id,`支付 ${(o.amount/100).toFixed(2)} 元`);data=o;}
+          owner(o,s);if(paid(o)){data=o;}else{check(profile&&canServe(profile,o.serviceType,o.gameId),'尚未取得该类型与游戏的发单资格，不能支付发布订单',403);check(o.status==='unpaid','订单已关闭，无法支付');o.status='waiting';o.paidAt=clock();o.paymentId=id('WXMOCK-');event(o,s,'模拟微信支付成功');audit(db,s,'模拟支付',o.id,`支付 ${(o.amount/100).toFixed(2)} 元`);data=o;}
         }else if(action==='accept'||action==='assign'){
           if(action==='accept')check(!isStaff(s.role),'员工账号不能接单',403);else can(s,'admin','customer_service');check(['waiting','accepted'].includes(o.status),'该订单当前不可接单或改派');check(o.refundStatus!=='pending','售后处理中，暂不可派单');
           const pid=action==='accept'?s.playerId:body.playerId;const p=db.players.find(p=>p.id===pid);check(p?.approved&&p.available&&canServe(p,o.serviceType,o.gameId),'队友未通过审核、已休息或不支持该游戏');

@@ -19,10 +19,10 @@
 | GET | `/v1/club` | 俱乐部公开配置 | 已登录 |
 | GET | `/v1/catalog/games` | 游戏和区服列表 | 已登录 |
 | GET | `/v1/players?gameId=` | 用户能看到认证成员与自己的档案 | 已登录 |
-| POST | `/v1/orders` | `{serviceType,gameId,region,playerId?,quantity,task?,taskPrice?,note?}` | 所有用户 |
+| POST | `/v1/orders` | `{serviceType,gameId,region,playerId?,quantity,task?,taskPrice?,note?}` | 通过对应类型与游戏考核的用户 |
 | GET | `/v1/orders` | `scope,status,serviceType,gameId,query,refund` | 服务端自动限制数据归属 |
 | GET | `/v1/orders/:id` | 订单、金额、服务动态 | 下单用户／全部协作成员／员工 |
-| POST | `/v1/orders/:id/pay` | 模拟支付，重复调用幂等 | 订单下单用户 |
+| POST | `/v1/orders/:id/pay` | 模拟支付；首次支付发布需对应发单资格，重复已支付调用幂等 | 订单下单用户 |
 | POST | `/v1/orders/:id/accept` | 认领订单与占用接单容量 | 匹配成员 |
 | POST | `/v1/orders/:id/assign` | `{playerId,reason?}` | 客服／管理员 |
 | POST | `/v1/orders/:id/start` | 开始服务 | 接单负责人 |
@@ -65,7 +65,7 @@ unpaid → cancelled
 
 `serviceType` 为 `escort`（护航）或 `hourly`（组队），与游戏独立。护航按整单金额 `taskPrice`（分，100～100000）计价，`quantity=1`，任务与验收标准 `task` 必填 5～200 字；组队按单价和 1～8 小时时长计费。开始时写入 `startedAt`；时长未满拒绝提交，护航提交需 `taskCompleted:true` 和完成记录。
 
-所有用户都可下单，认证成员也可下单；不能接取自己发布的订单。接单资格分别按服务方向和考核游戏检查。入驻流程：提交 → 资料审核 → 专项考核 → 录入成绩（60～100 分）后开通。拒绝后可重新申请。
+新用户默认无组队、护航的发单及接单资格。创建与接取订单均按服务方向和考核游戏检查，未通过时返回 403；不能接取自己发布的订单。入驻流程：提交 → 资料审核 → 专项考核 → 录入成绩（60～100 分）后开通该类型及游戏的发单与接单权限。拒绝后可重新申请。
 
 `team` 包含负责人及副手，副手也必须通过护航与该游戏考核、在线且无未完成订单。开始后禁止添加和移除成员。团队全员能查看并在“我参与的”中看到订单；开始、完成及团队管理仅负责人执行。
 
