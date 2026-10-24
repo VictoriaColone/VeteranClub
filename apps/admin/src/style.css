@@ -7,3 +7,17 @@
 .stat-foot .stat-note{white-space:nowrap;flex-shrink:0}.tiny-chart{max-width:90px;font-size:14px;letter-spacing:0;overflow:hidden;white-space:nowrap;flex-shrink:1}.stat-card{align-self:stretch}.stat-foot{min-height:20px}.stat-note{line-height:1.8}
 .sidebar nav>button{font-size:13px}.breadcrumb{font-size:12px}.panel-heading h2{font-size:15px}.panel-heading p{font-size:10px}.el-table{font-size:12px}.el-table th.el-table__cell{font-size:11px}.table-game strong,.table-money,.order-id-link{font-size:12px}.table-game small,.cell-sub{font-size:10px}.status-badge{font-size:10px}.table-person{font-size:11px}.page-top p{font-size:11px}.stat-head{font-size:12px}.stat-foot .stat-note{font-size:9px}.activity-item strong{font-size:11px}.activity-item p{font-size:10px}.activity-item small{font-size:9px}
 .allocation-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #e9e7f0}.allocation-row>span{flex:1}.allocation-row small{color:#90909e;font-size:11px}.table-toolbar{flex-wrap:wrap}
+/* User onboarding is reviewed from the customer's profile. */
+.onboarding-status { margin: 4px 0; color: var(--el-color-primary); }
+.onboarding-card { border: 1px solid var(--el-border-color-lighter); border-radius: 16px; padding: 22px; margin: 20px 0; background: var(--el-bg-color); }
+.onboarding-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.onboarding-card-heading h3 { margin: 0; font-size: 17px; }
+.onboarding-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--el-text-color-secondary); font-size: 12px; padding: 18px 0; }
+.onboarding-details { margin: 0; }
+.onboarding-details > div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; line-height: 1.7; font-size: 13px; }
+.onboarding-details dt { color: var(--el-text-color-secondary); }
+.onboarding-details dd { margin: 0; overflow-wrap: anywhere; }
+.onboarding-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 10px; }
+.onboarding-actions .el-button + .el-button { margin-left: 0; }
+/* Keep page scrolling inside tables instead of beneath the fixed sidebar. */
+.main-shell { min-width: 0; }

@@ -1,4 +1,4 @@
-import { createSeed, createProducts, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION } from './seed';
+import { createSeed, createProducts, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION, DEFAULT_COMMISSION_BPS, UNPAID_TIMEOUT_MINUTES } from './seed';
 import {parseMockPath,shanghaiDay} from './runtime';
 import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
@@ -36,19 +36,47 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
           db.catalogRevision=CATALOG_REVISION;changed=true;
         }
         if(!Array.isArray(db.products)){db.products=createProducts(db.players,db.games,clock());changed=true;}
+        if(db.settings.commissionBps!==DEFAULT_COMMISSION_BPS||db.settings.unpaidTimeoutMinutes!==UNPAID_TIMEOUT_MINUTES){db.settings.commissionBps=DEFAULT_COMMISSION_BPS;db.settings.unpaidTimeoutMinutes=UNPAID_TIMEOUT_MINUTES;changed=true;}
         if(changed)storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
       }
     }catch{/* recreate corrupt demo data */}}
     const db=createSeed(clock());storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
   }
   function save(db:Database){db.revision++;storage.setItem(STORAGE_KEY,JSON.stringify(db));}
-  function audit(db:Database,s:Session,action:string,target:string,detail:string){const a:Audit={id:id('log-'),at:clock(),actor:s.name,action,target,detail};db.audit.unshift(a);db.audit=db.audit.slice(0,300);}
+  function audit(db:Database,s:Pick<Session,'name'>,action:string,target:string,detail:string){const a:Audit={id:id('log-'),at:clock(),actor:s.name,action,target,detail};db.audit.unshift(a);db.audit=db.audit.slice(0,300);}
   function event(o:Order,s:Session,label:string,note?:string){o.timeline.push({at:clock(),actor:s.name,label,note});}
   function owner(o:Order,s:Session){check(o.bossId===s.userId,'只能操作自己的订单',403);}
   function playerOwner(o:Order,s:Session){check(!!s.playerId&&o.playerId===s.playerId,'只能操作分配给自己的订单',403);}
   function expire(db:Database){let changed=false;db.orders.forEach(o=>{if(o.status==='unpaid'&&clock()-o.createdAt>=db.settings.unpaidTimeoutMinutes*60000){o.status='cancelled';o.timeline.push({at:clock(),actor:'系统',label:'超时未支付，订单已关闭'});changed=true;}});if(changed)save(db);}
+  function autoSettle(db:Database){
+    let changed=false;
+    // Resume legacy unpaid batches only after all of their orders leave after-sales review.
+    for(const batch of db.settlements.filter(b=>b.status==='pending')){
+      if(!batch.orderIds.length||!batch.orderIds.every(orderId=>db.orders.some(o=>o.id===orderId&&o.status==='completed'&&paid(o)&&o.refundStatus!=='pending'&&orderMembers(o).some(m=>m.playerId===batch.playerId))))continue;
+      batch.status='paid';batch.paidAt=clock();changed=true;
+      audit(db,{name:'系统'},'自动结算（模拟）',batch.id,`${batch.playerName} · ${(batch.amount/100).toFixed(2)} 元`);
+    }
+    for(const o of db.orders.filter(o=>o.status==='completed'&&paid(o)&&o.refundStatus!=='pending')){
+      const members=orderMembers(o);if(!members.length)continue;
+      o.team=members;
+      for(const member of members){
+        let batch=db.settlements.find(b=>b.playerId===member.playerId&&b.orderIds.includes(o.id));
+        if(!batch){
+          batch={id:id('JS-').toUpperCase(),playerId:member.playerId,playerName:member.name,orderIds:[o.id],amount:participantEarnings(o,member.playerId),status:'paid',createdAt:clock(),paidAt:clock()};
+          db.settlements.unshift(batch);changed=true;
+          audit(db,{name:'系统'},'自动结算（模拟）',batch.id,`${member.name} · 订单 ${o.id} · ${(batch.amount/100).toFixed(2)} 元`);
+        }
+        if(member.settlementId!==batch.id){member.settlementId=batch.id;changed=true;}
+        if(!o.settlementId){o.settlementId=batch.id;changed=true;}
+      }
+      if(members.every(m=>db.settlements.some(b=>b.id===m.settlementId&&b.status==='paid'))&&!o.timeline.some(e=>e.label==='系统自动结算完成（模拟）')){
+        o.timeline.push({at:clock(),actor:'系统',label:'系统自动结算完成（模拟）',note:'按订单服务费规则扣除费用后，协作成员均分净报酬。'});changed=true;
+      }
+    }
+    return changed;
+  }
   function dispatch(method:string,path:string,body:any={},token?:string):ApiResponse<unknown>{
-    const db=read();expire(db);const {route,query:q}=parseMockPath(path);let data:unknown;
+    const db=read();expire(db);if(autoSettle(db))save(db);const {route,query:q}=parseMockPath(path);let data:unknown;
     if(route==='/v1/auth/mock-login'&&method==='POST'){
       const roles:Role[]=['user','boss','player','admin','customer_service','finance'];check(roles.includes(body.role),'请选择有效的演示身份');
       const identities:Record<Role, Omit<Session,'token'|'role'>>={user:{userId:'u-boss',name:'林序',playerId:'p0'},boss:{userId:'u-boss',name:'林序'},player:{userId:'u-player',name:'岚',playerId:'p1'},admin:{userId:'u-admin',name:'陈安'},customer_service:{userId:'u-cs',name:'许知'},finance:{userId:'u-finance',name:'沈禾'}};
@@ -59,6 +87,13 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     else if(route==='/v1/catalog/games'&&method==='GET')data=db.games;
     else if(route==='/v1/club'&&method==='GET')data=db.settings;
     else if(route==='/v1/players'&&method==='GET'){data=db.players.filter(p=>(isStaff(s.role)||p.approved||p.userId===s.userId)&&(!q.get('gameId')||p.gameIds.includes(q.get('gameId')!))).map(p=>({...p,busy:db.orders.some(o=>orderMembers(o).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(o.status))}));}
+    else if(route==='/v1/admin/users'&&method==='GET'){
+      check(isStaff(s.role),'无权查看用户资料',403);
+      const users=new Map(db.players.map(p=>[p.userId,{id:p.userId,name:p.name,playerId:p.id}]));
+      // Older demo orders may predate a separate user profile.
+      for(const o of db.orders)if(!users.has(o.bossId))users.set(o.bossId,{id:o.bossId,name:o.bossName,playerId:''});
+      data=Array.from(users.values());
+    }
     else if(route==='/v1/products'&&method==='GET'){
       data=(db.products||[]).filter(product=>q.get('scope')==='mine'?product.userId===s.userId:product.active&&db.players.some(p=>p.id===product.playerId&&canServe(p,product.serviceType,product.gameId))).sort((a,b)=>b.createdAt-a.createdAt);
     }
@@ -113,7 +148,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
         }else if(action==='start'){playerOwner(o,s);check(o.status==='accepted'&&o.refundStatus!=='pending','订单当前无法开始服务');o.status='serving';o.startedAt=clock();o.demoElapsedMs=0;event(o,s,'服务已开始');audit(db,s,'开始服务',o.id,'队友确认开始服务');data=o;
         }else if(action==='demo-elapse'){playerOwner(o,s);check(o.serviceType==='hourly'&&o.status==='serving'&&o.refundStatus!=='pending','仅时长服务可模拟计时');o.demoElapsedMs=o.quantity*3600000;event(o,s,'演示计时已走满','仅模拟环境使用');data=o;
         }else if(action==='finish'){playerOwner(o,s);check(o.status==='serving'&&o.refundStatus!=='pending','订单当前无法结束服务');if(o.serviceType==='escort')check(body.taskCompleted===true,'请确认指定任务已达成，并填写完成记录');else check(clock()-(o.startedAt??clock())+(o.demoElapsedMs||0)>=o.quantity*3600000,'约定服务时长尚未完成');o.taskCompleted=o.serviceType==='escort';check(String(body.note||'').trim().length>=2,'请填写至少 2 字服务记录');o.status='confirming';event(o,s,'服务已结束，等待用户确认',String(body.note).slice(0,200));audit(db,s,'提交完成',o.id,String(body.note).slice(0,200));data=o;
-        }else if(action==='confirm'){owner(o,s);check(o.status==='confirming'&&o.refundStatus!=='pending','订单尚未到确认阶段或正在售后');o.status='completed';o.finishedAt=clock();event(o,s,'用户确认完成');audit(db,s,'确认完成',o.id,'报酬计入待结算');data=o;
+        }else if(action==='confirm'){owner(o,s);check(o.status==='confirming'&&o.refundStatus!=='pending','订单尚未到确认阶段或正在售后');o.status='completed';o.finishedAt=clock();event(o,s,'用户确认完成');audit(db,s,'确认完成',o.id,'系统自动结算成员净报酬（模拟）');data=o;
         }else if(action==='cancel'){if(!['admin','customer_service'].includes(s.role))owner(o,s);check(o.status==='unpaid','已付款订单请走售后退款');o.status='cancelled';event(o,s,'订单已取消');audit(db,s,'取消订单',o.id,'未支付订单已取消');data=o;
         }else if(action==='refund'){
           if(!['admin','customer_service'].includes(s.role))owner(o,s);check(paid(o)&&o.status!=='cancelled','该订单不可申请退款');check(o.refundStatus==='none'||o.refundStatus==='rejected','该订单已有退款申请');check(!o.settlementId,'订单已进入结算批次，请联系客服处理结算调整');
@@ -121,7 +156,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
         }else if(action==='review-refund'){
           can(s,'admin','finance');check(o.refundStatus==='pending','该退款已被处理');check(body.approve===true||body.approve===false,'请选择审核结果');check(String(body.note||'').trim().length>=2,'请填写审核说明');o.refundReviewNote=String(body.note).slice(0,200);
           if(body.approve){o.refundStatus='refunded';const left=o.amount-o.refundAmount!;o.earnings=Math.floor(left*(10000-o.commissionBps)/10000);if(left===0)o.status='cancelled';event(o,s,'模拟原路退款成功',o.refundReviewNote);}else{o.refundStatus='rejected';event(o,s,'退款申请未通过',o.refundReviewNote);}audit(db,s,body.approve?'批准退款':'拒绝退款',o.id,o.refundReviewNote);data=o;
-        }else throw new ApiError(404,'模拟接口不存在');save(db);
+        }else throw new ApiError(404,'模拟接口不存在');autoSettle(db);save(db);
       }else throw new ApiError(405,'请求方法不支持');
     }
     else if(route==='/v1/applications'&&method==='GET'){data=isStaff(s.role)?db.applications:db.applications.filter(a=>a.userId===s.userId);}
@@ -144,20 +179,19 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     else if(route==='/v1/admin/settlements'&&method==='GET'){can(s,'admin','finance');data=db.settlements;}
     else if(route==='/v1/admin/settlements'&&method==='POST'){
-      can(s,'admin','finance');const eligible=db.orders.filter(unsettled);const ids=new Set(eligible.flatMap(o=>orderMembers(o).filter(m=>!m.settlementId&&(!body.playerId||m.playerId===body.playerId)).map(m=>m.playerId)));check(ids.size,'暂无可结算订单');const created=[];
-      for(const pid of ids){const list=eligible.filter(o=>orderMembers(o).some(m=>m.playerId===pid&&!m.settlementId));const batch={id:id('JS-').toUpperCase(),playerId:pid,playerName:orderMembers(list[0]).find(m=>m.playerId===pid)!.name,orderIds:list.map(o=>o.id),amount:list.reduce((n,o)=>n+participantEarnings(o,pid),0),status:'pending' as const,createdAt:clock()};list.forEach(o=>{o.team.find(m=>m.playerId===pid)!.settlementId=batch.id;o.settlementId||=batch.id;});db.settlements.unshift(batch);created.push(batch);audit(db,s,'生成结算',batch.id,`${batch.playerName} · ${list.length} 笔订单`);}save(db);data=created;
+      can(s,'admin','finance');throw new ApiError(410,'报酬由系统自动结算，无需手动生成批次');
     }
     else if(/^\/v1\/admin\/settlements\/[^/]+\/pay$/.test(route)&&method==='POST'){
-      can(s,'admin','finance');const batch=db.settlements.find(v=>v.id===route.split('/')[4]);check(batch,'结算单不存在',404);check(batch.status==='pending','该批次已经付款，请勿重复操作');batch.status='paid';batch.paidAt=clock();audit(db,s,'模拟结算付款',batch.id,`${batch.playerName} · ${(batch.amount/100).toFixed(2)} 元`);save(db);data=batch;
+      can(s,'admin','finance');throw new ApiError(410,'报酬由系统自动结算，无需手动付款');
     }
     else if(route==='/v1/admin/dashboard'&&method==='GET'){
       check(isStaff(s.role),'无权查看运营数据',403);const today=day(clock());const todayOrders=db.orders.filter(o=>day(o.createdAt)===today);
       const revenue=(list:Order[])=>list.filter(paid).reduce((n,o)=>n+o.amount-(o.refundStatus==='refunded'?o.refundAmount||0:0),0);
-      data={todayRevenue:revenue(db.orders.filter(o=>o.paidAt&&day(o.paidAt)===today)),todayOrders:todayOrders.length,liveOrders:db.orders.filter(o=>['accepted','serving','confirming'].includes(o.status)).length,refundPending:db.orders.filter(o=>o.refundStatus==='pending').length,onlinePlayers:db.players.filter(p=>p.approved&&p.available).length,totalPlayers:db.players.length,availablePlayers:db.players.filter(p=>p.approved&&p.available&&!db.orders.some(o=>orderMembers(o).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(o.status))).length,unassigned:db.orders.filter(o=>o.status==='waiting'&&o.refundStatus!=='pending').length,pendingPayout:db.orders.filter(unsettled).reduce((n,o)=>n+unsettledAmount(o),0),revenueTrend:Array.from({length:7},(_,i)=>{const d=day(clock()-(6-i)*86400000);const list=db.orders.filter(o=>day(o.createdAt)===d);return {label:d.slice(5).replace('-','/'),revenue:revenue(list),orders:list.length};}),gameDistribution:db.games.map(g=>({name:g.name,orders:db.orders.filter(o=>o.gameId===g.id&&paid(o)).length,color:g.color})),recentOrders:db.orders.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6),activity:db.audit.slice(0,6)} satisfies Dashboard;
+      data={todayRevenue:revenue(db.orders.filter(o=>o.paidAt&&day(o.paidAt)===today)),todayOrders:todayOrders.length,liveOrders:db.orders.filter(o=>['accepted','serving','confirming'].includes(o.status)).length,refundPending:db.orders.filter(o=>o.refundStatus==='pending').length,onlinePlayers:db.players.filter(p=>p.approved&&p.available).length,totalPlayers:db.players.filter(p=>p.approved).length,availablePlayers:db.players.filter(p=>p.approved&&p.available&&!db.orders.some(o=>orderMembers(o).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(o.status))).length,unassigned:db.orders.filter(o=>o.status==='waiting'&&o.refundStatus!=='pending').length,pendingPayout:db.orders.filter(unsettled).reduce((n,o)=>n+unsettledAmount(o),0),revenueTrend:Array.from({length:7},(_,i)=>{const d=day(clock()-(6-i)*86400000);const list=db.orders.filter(o=>day(o.createdAt)===d);return {label:d.slice(5).replace('-','/'),revenue:revenue(list),orders:list.length};}),gameDistribution:db.games.map(g=>({name:g.name,orders:db.orders.filter(o=>o.gameId===g.id&&paid(o)).length,color:g.color})),recentOrders:db.orders.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6),activity:db.audit.slice(0,6)} satisfies Dashboard;
     }
     else if(route==='/v1/admin/audit'&&method==='GET'){can(s,'admin');data=db.audit;}
     else if(route==='/v1/admin/settings'&&method==='PATCH'){
-      can(s,'admin');check(typeof body.name==='string'&&body.name.trim().length>=2&&body.name.trim().length<=20,'俱乐部名称应为 2～20 字');check(Number.isInteger(body.commissionBps)&&body.commissionBps>=0&&body.commissionBps<=5000,'抽成比例应为 0～50%');check([5,10,15,30].includes(body.unpaidTimeoutMinutes),'支付时限无效');check(String(body.announcement||'').length<=120,'公告不能超过 120 字');db.settings={name:body.name.trim(),commissionBps:body.commissionBps,unpaidTimeoutMinutes:body.unpaidTimeoutMinutes,announcement:String(body.announcement||'')};audit(db,s,'更新配置','俱乐部设置','新抽成规则仅对新订单生效');save(db);data=db.settings;
+      can(s,'admin');throw new ApiError(410,'交易规则固定为 20% 服务费、待支付 10 分钟自动关闭，暂不支持修改');
     }
     else if(route==='/v1/demo/reset'&&method==='POST'){can(s,'admin');const fresh=createSeed(clock());fresh.sessions=db.sessions;save(fresh);data={reset:true};}
     else throw new ApiError(404,`模拟接口不存在：${method} ${route}`);

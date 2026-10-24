@@ -7,7 +7,7 @@ export function orderIncome(order:Order,playerId:string|undefined,settlements:Se
   const settlement=settlements.find(s=>s.id===member.settlementId&&s.playerId===playerId&&s.orderIds.includes(order.id));
   if(order.status==='cancelled')return {amount,amountLabel:'个人报酬',status:'cancelled',label:'未产生报酬'};
   if(order.refundStatus==='pending')return {amount,amountLabel,status:'frozen',label:'售后处理中 · 暂缓结算'};
-  if(order.status!=='completed')return {amount,amountLabel,status:'estimated',label:'完成并确认后结算'};
-  if(settlement)return {amount,amountLabel,status:settlement.status,label:settlement.status==='paid'?'已结算':'待付款',settlement};
-  return {amount,amountLabel,status:'pending',label:member.settlementId?'结算处理中':'待结算'};
+  if(order.status!=='completed')return {amount,amountLabel,status:'estimated',label:'确认完成后自动结算'};
+  if(settlement)return {amount,amountLabel,status:settlement.status,label:settlement.status==='paid'?'已自动结算':'自动结算处理中',settlement};
+  return {amount,amountLabel,status:'pending',label:'自动结算处理中'};
 }

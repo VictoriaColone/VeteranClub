@@ -1,5 +1,5 @@
 import { createMockTransport, ApiError } from './mock';
-import type { Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
+import type { ClubUser, Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
 export class ClubApi {
   constructor(private transport:Transport=createMockTransport(),public session:Session|null=null){}
   private request<T>(method:string,path:string,body?:unknown){return this.transport<T>(method,path,body,this.session?.token);}
@@ -8,6 +8,7 @@ export class ClubApi {
   games(){return this.request<Game[]>('GET','/v1/catalog/games');}
   settings(){return this.request<ClubSettings>('GET','/v1/club');}
   players(gameId?:string){return this.request<Player[]>('GET',`/v1/players${gameId?'?gameId='+encodeURIComponent(gameId):''}`);}
+  users(){return this.request<ClubUser[]>('GET','/v1/admin/users');}
   orders(filters:OrderFilters={}){const qs=Object.entries(filters).filter(([,v])=>v).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v!)}`).join('&');return this.request<Order[]>('GET',`/v1/orders?${qs}`);}
   order(id:string){return this.request<Order>('GET',`/v1/orders/${id}`);}
   createOrder(input:OrderInput){return this.request<Order>('POST','/v1/orders',input);}
@@ -24,10 +25,7 @@ export class ClubApi {
   dashboard(){return this.request<Dashboard>('GET','/v1/admin/dashboard');}
   updatePlayer(id:string,data:Partial<Pick<Player,'available'|'approved'|'price'>>){return this.request<Player>('PATCH',`/v1/admin/players/${id}`,data);}
   settlements(){return this.request<Settlement[]>('GET','/v1/admin/settlements');}
-  createSettlements(playerId?:string){return this.request<Settlement[]>('POST','/v1/admin/settlements',{playerId});}
-  paySettlement(id:string){return this.request<Settlement>('POST',`/v1/admin/settlements/${id}/pay`);}
   audit(){return this.request<Audit[]>('GET','/v1/admin/audit');}
-  updateSettings(settings:ClubSettings){return this.request<ClubSettings>('PATCH','/v1/admin/settings',settings);}
   reset(){return this.request('POST','/v1/demo/reset');}
 }
 export function createHttpTransport(baseUrl:string):Transport {

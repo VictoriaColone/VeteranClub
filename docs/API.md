@@ -16,7 +16,7 @@
 |---|---|---|---|
 | POST | `/v1/auth/mock-login` | `{role,accountId?}`；用户统一传 `user`，旧身份别名仅兼容历史数据与测试 | 公开演示入口 |
 | POST | `/v1/auth/logout` | 撤销当前会话 | 已登录 |
-| GET | `/v1/club` | 俱乐部公开配置 | 已登录 |
+| GET | `/v1/club` | 俱乐部公开信息与固定规则：20% 服务费、待支付 10 分钟关闭 | 已登录 |
 | GET | `/v1/catalog/games` | 游戏和区服列表 | 已登录 |
 | GET | `/v1/players?gameId=` | 用户能看到认证成员与自己的档案 | 已登录 |
 | GET | `/v1/products?scope=public/mine` | 在售目录或本人商品 | 用户 |
@@ -37,6 +37,7 @@
 | POST | `/v1/orders/:id/review-refund` | `{approve,note}` | 财务／管理员 |
 | POST | `/v1/player/availability` | `{available}` | 当前成员 |
 | GET | `/v1/player/wallet` | 报酬明细及批次记录 | 当前成员 |
+| GET | `/v1/admin/users` | 全部注册用户（含未下单用户），按 userId 关联订单与入驻申请 | 员工 |
 | PATCH | `/v1/admin/players/:id` | `{price?,available?,approved:false?}`；资格授予必须通过考核接口 | 管理员 |
 | GET | `/v1/applications` | 用户看本人、员工看申请列表 | 已登录 |
 | POST | `/v1/applications` | `{serviceType,gameIds,introduction}` | 用户 |
@@ -45,11 +46,8 @@
 | POST | `/v1/orders/:id/remove-assistant` | `{playerId}`；不能移除负责人 | 负责人 |
 | POST | `/v1/orders/:id/demo-elapse` | **仅演示**：模拟走满约定时长；真实接口应移除 | 负责人 |
 | GET | `/v1/admin/dashboard` | 指标、趋势、分布、动态 | 员工 |
-| GET | `/v1/admin/settlements` | 结算批次 | 财务／管理员 |
-| POST | `/v1/admin/settlements` | `{playerId?}` | 财务／管理员 |
-| POST | `/v1/admin/settlements/:id/pay` | 模拟付款，拒绝重复操作 | 财务／管理员 |
+| GET | `/v1/admin/settlements` | 自动结算记录，只读查询 | 财务／管理员 |
 | GET | `/v1/admin/audit` | 最近 300 条模拟审计 | 管理员 |
-| PATCH | `/v1/admin/settings` | `{name,commissionBps,unpaidTimeoutMinutes,announcement}` | 管理员 |
 | POST | `/v1/demo/reset` | 恢复样例，仅演示 | 管理员 |
 
 ## 状态与约束
@@ -59,9 +57,11 @@ unpaid → waiting → accepted → serving → confirming → completed
 unpaid → cancelled
 ```
 
-退款单独使用 `none → pending → refunded / rejected`；全额退款使订单变为 cancelled，部分退款保留履约状态并重算报酬。待审售后阻止接单、开始、提交完成、确认及结算。超时未支付由模拟请求访问时检查；真实服务应改为可靠定时任务。
+退款单独使用 `none → pending → refunded / rejected`；全额退款使订单变为 cancelled，部分退款保留履约状态并重算报酬。待审售后阻止接单、开始、提交完成、确认及结算。待支付订单满 10 分钟自动关闭；Mock 在请求时检查，真实服务应改为可靠定时任务。
 
-下单时保存单价、总价、服务时长和 commissionBps 快照；10000 基点为 100%。报酬向下取整到分。每位成员的份额不能重复加入结算批次，且本阶段不支持对此类订单发起退款。
+新订单固定使用 2000 基点（20%）服务费。旧本地配置同步为 20% / 10 分钟，历史订单的费率与金额快照保持不变。下单时保存单价、总价、服务时长和 commissionBps 快照；10000 基点为 100%。报酬向下取整到分。用户确认完成后，同一次模拟订单操作自动为每位成员生成已结算记录。每个订单、成员份额只结算一次；待审售后暂停结算，审核结束且订单已完成后自动继续。旧版未付款批次在满足条件时自动完成，已有已付款记录不重复付款。本阶段不支持对已结算订单再次发起退款。
+
+后台从客户管理中的用户行查看入驻进展，管理员可继续资料审核、录入考核成绩与拒绝申请；其他员工只读查看。独立入驻考核、报酬结算及俱乐部设置页面已移除。旧手动生成结算、手动付款和修改配置接口返回 410，客户端不再暴露这些写方法。所有结算仍为模拟记录，不进行真实微信或银行转账。
 
 真实后端仍须实现：创建订单请求幂等键、支付／退款渠道状态与回调重试、数据库事务与唯一约束、凭据管理、参数及内容审查、任务持久化、备份、渠道对账。当前浏览器模拟不替代这些能力。
 
