@@ -1,4 +1,5 @@
 import { qualifiedGames } from './types';
+import { CLUB_NAME } from './brand';
 import type { Database, Game, Product, Order, OrderStatus, Player } from './types';
 export const STORAGE_KEY = 'stellar-club:database:v1';
 export const DEFAULT_ESCORT_TASK = '100w纯带出';
@@ -42,9 +43,9 @@ export function createSeed(now = Date.now()): Database {
   });
   // Keep one open job for the logged-in player; avoid an existing unfinished assignment.
   orders.filter(o=>o.playerId==='p1'&&['accepted','serving','confirming'].includes(o.status)).forEach(o=>{o.playerId='p5';o.playerName='北辰';o.team=[{playerId:'p5',name:'北辰'}];});
-  players.push({id:'p0',userId:'u-boss',name:'林序',subtitle:'欢迎加入星曜',gameIds:games.map(g=>g.id),tags:['新朋友'],rating:5,completed:0,price:6800,color:'#b6c89a',avatar:'X',available:false,approved:false,qualifications:[],bio:'每一场游戏，都值得认真对待。'});
+  players.push({id:'p0',userId:'u-boss',name:'林序',subtitle:`欢迎加入${CLUB_NAME}`,gameIds:games.map(g=>g.id),tags:['新朋友'],rating:5,completed:0,price:6800,color:'#b6c89a',avatar:'X',available:false,approved:false,qualifications:[],bio:'每一场游戏，都值得认真对待。'});
   players.push({id:'p7',userId:'u-p7',name:'远山',subtitle:'全能战术协作',gameIds:games.map(g=>g.id),tags:['默契协作'],rating:4.98,completed:132,price:6800,color:'#94b9c5',avatar:'Y',available:true,approved:true,qualifications:['hourly','escort'],bio:'可靠的信息沟通，认真完成每次约定。'});
   players.push({id:'p-hourly',userId:'u-hourly',name:'小屿',subtitle:'默契组队 · 认真同行',gameIds:games.map(g=>g.id),tags:['沟通耐心'],rating:4.98,completed:86,price:6800,color:'#cabfe2',avatar:'I',available:true,approved:true,qualifications:['hourly'],bio:'喜欢有来有回的配合，一起享受游戏过程。'});
   players.push({id:'p-escort',userId:'u-escort',name:'凛',subtitle:'任务护航 · 稳定协作',gameIds:games.map(g=>g.id),tags:['目标明确'],rating:4.97,completed:108,price:6800,color:'#a6c5be',avatar:'R',available:true,approved:true,qualifications:['escort'],bio:'认真沟通任务目标，和团队一起完成约定。'});
-  return {schema:2,products:createProducts(players,games,now),catalogRevision:CATALOG_REVISION,applications:[],revision:0,games,players,orders,settlements:[],sequence:1029,settings:{name:'星曜电竞',commissionBps:DEFAULT_COMMISSION_BPS,unpaidTimeoutMinutes:UNPAID_TIMEOUT_MINUTES,announcement:'一起出发。下单前请确认游戏区服、任务目标或服务时长。'},audit:[{id:'seed-1',at:now-5*60000,actor:'客服 · 许知',action:'处理售后',target:orders[7].id,detail:'收到用户退款申请，等待财务审核。'},{id:'seed-2',at:now-18*60000,actor:'北辰',action:'开始服务',target:orders[1].id,detail:'队友已开始服务。'},{id:'seed-3',at:now-32*60000,actor:'运营 · 陈安',action:'审核队友',target:'十一',detail:'技能与资料审核通过。'}],sessions:[]};
+  return {schema:2,products:createProducts(players,games,now),catalogRevision:CATALOG_REVISION,applications:[],revision:0,games,players,orders,settlements:[],sequence:1029,settings:{name:CLUB_NAME,commissionBps:DEFAULT_COMMISSION_BPS,unpaidTimeoutMinutes:UNPAID_TIMEOUT_MINUTES,announcement:'一起出发。下单前请确认游戏区服、任务目标或服务时长。'},audit:[{id:'seed-1',at:now-5*60000,actor:'客服 · 许知',action:'处理售后',target:orders[7].id,detail:'收到用户退款申请，等待财务审核。'},{id:'seed-2',at:now-18*60000,actor:'北辰',action:'开始服务',target:orders[1].id,detail:'队友已开始服务。'},{id:'seed-3',at:now-32*60000,actor:'运营 · 陈安',action:'审核队友',target:'十一',detail:'技能与资料审核通过。'}],sessions:[]};
 }

@@ -1,7 +1,7 @@
 {
-  "name": "星曜电竞",
+  "name": "诺曼部落",
   "appid": "",
-  "description": "星曜电竞用户游戏协作平台",
+  "description": "诺曼部落用户游戏协作平台",
   "versionName": "2.1.0",
   "versionCode": "101",
   "vueVersion": "3",
@@ -9,7 +9,7 @@
     "router": {
       "mode": "hash"
     },
-    "title": "星曜电竞 · 找到你的最佳队友"
+    "title": "诺曼部落 · 找到你的最佳队友"
   },
   "mp-weixin": {
     "appid": "",

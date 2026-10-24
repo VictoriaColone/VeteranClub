@@ -21,14 +21,18 @@ test('客户目录包含未下单的注册用户；申请始终关联同一个�
   assert.equal(users().filter(u=>u.id===user.userId).length,1);
 });
 
-test('旧配置迁移到20%和10分钟，历史订单仍保留原费率及净报酬',()=>{
+test('旧品牌与交易配置自动迁移，历史订单仍保留原费率及净报酬',()=>{
   const storage=new MemoryStorage(),db=createSeed();
+  db.settings.name='星曜电竞';db.players.find(p=>p.id==='p0')!.subtitle='欢迎加入星曜';
   db.settings.commissionBps=3000;db.settings.unpaidTimeoutMinutes=30;
   const order=db.orders.find(o=>o.status==='completed'&&o.refundStatus==='none')!;
   order.commissionBps=3000;order.earnings=Math.floor(order.amount*.7);
   storage.setItem(STORAGE_KEY,JSON.stringify(db));
   const server=createMockServer(storage),admin=server.dispatch('POST','/v1/auth/mock-login',{role:'admin'}).data as Session;
   const settings=server.dispatch('GET','/v1/club',{},admin.token).data as ClubSettings;
+  assert.equal(settings.name,'诺曼部落');
+  assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)!).settings.name,'诺曼部落');
+  assert.equal(server.read().players.find(p=>p.id==='p0')!.subtitle,'欢迎加入诺曼部落');
   assert.equal(settings.commissionBps,2000);assert.equal(settings.unpaidTimeoutMinutes,10);
   const historical=server.dispatch('GET',`/v1/orders/${order.id}`,{},admin.token).data as Order;
   assert.equal(historical.commissionBps,3000);assert.equal(historical.earnings,order.earnings);

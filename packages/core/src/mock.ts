@@ -1,5 +1,6 @@
 import { createSeed, createProducts, STORAGE_KEY, SUPPORTED_GAMES, DEFAULT_ESCORT_TASK, CATALOG_REVISION, DEFAULT_COMMISSION_BPS, UNPAID_TIMEOUT_MINUTES } from './seed';
 import {parseMockPath,shanghaiDay} from './runtime';
+import { CLUB_NAME } from './brand';
 import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
@@ -25,6 +26,8 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       }
       if(db.schema===2){
         let changed=legacyUpgrade;
+        if(db.settings.name!==CLUB_NAME){db.settings.name=CLUB_NAME;changed=true;}
+        db.players.forEach(p=>{if(p.subtitle==='欢迎加入星曜'){p.subtitle=`欢迎加入${CLUB_NAME}`;changed=true;}});
         if(['p-hourly','p-escort'].some(id=>!db.players.some(p=>p.id===id))){const seed=createSeed(clock());seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));changed=true;}
         if(db.catalogRevision!==CATALOG_REVISION){
           const legacy:Record<string,string>={hok:'delta',pubg:'delta'};
