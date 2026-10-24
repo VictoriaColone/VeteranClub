@@ -148,3 +148,38 @@ for(const serviceType of ['hourly','escort'] as const)test(`${serviceType}：不
   const other=f.call<Order>(f.boss,'POST','/v1/orders',{...input,productId:product.id});
   assert.equal(other.preferredPlayerId,member.playerId);assert.notEqual(other.bossId,member.userId);
 });
+
+for(const serviceType of ['hourly','escort'] as const)test(`${serviceType}：个人服务商品可重复预约，服务中与离线不下架、不阻止邀请`,()=>{
+  const f=fixture(false),member=f.player,other=loginUser(f,'u-hourly');
+  const product=f.call<Product>(member,'POST','/v1/products',goodsInput(serviceType,'valorant'));
+  const input={productId:product.id,serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'100w纯带出',taskPrice:100};
+  const catalog=()=>f.call<Product[]>(f.boss,'GET','/v1/products');
+  const profile=()=>f.call<Player[]>(f.boss,'GET','/v1/players').find(p=>p.id===member.playerId)!;
+  const createPaid=(buyer:Session)=>{const order=f.call<Order>(buyer,'POST','/v1/orders',input);return f.call<Order>(buyer,'POST',`/v1/orders/${order.id}/pay`);};
+  const first=createPaid(f.boss);f.call(member,'POST',`/v1/orders/${first.id}/accept`);f.call(member,'POST',`/v1/orders/${first.id}/start`);
+  assert.equal(profile().busy,true);assert.ok(catalog().some(p=>p.id===product.id));
+  const second=createPaid(other);assert.equal(second.status,'waiting');assert.equal(second.preferredPlayerId,member.playerId);
+  assert.throws(()=>f.call(member,'POST',`/v1/orders/${second.id}/accept`),/未完成订单/);
+  f.call(member,'POST','/v1/player/availability',{available:false});
+  const third=createPaid(f.boss);assert.equal(third.status,'waiting');assert.equal(profile().available,false);
+  assert.ok(catalog().some(p=>p.id===product.id));assert.equal(f.call<Order[]>(other,'GET','/v1/orders?scope=hall').some(o=>o.id===third.id),false);
+  if(serviceType==='hourly')f.call(member,'POST',`/v1/orders/${first.id}/demo-elapse`);
+  f.call(member,'POST',`/v1/orders/${first.id}/finish`,{note:'本次服务任务已完成',taskCompleted:true});f.call(f.boss,'POST',`/v1/orders/${first.id}/confirm`);
+  assert.equal(profile().busy,false);assert.equal(profile().available,false);
+  const offline=createPaid(other);assert.equal(offline.status,'waiting');
+  assert.throws(()=>f.call(member,'POST',`/v1/orders/${second.id}/accept`),/休息/);
+  f.call(member,'POST','/v1/player/availability',{available:true});
+  assert.equal(f.call<Order>(member,'POST',`/v1/orders/${second.id}/accept`).status,'accepted');
+  assert.ok(catalog().some(p=>p.id===product.id));
+  f.call(member,'PATCH',`/v1/products/${product.id}`,{active:false});
+  assert.ok(!catalog().some(p=>p.id===product.id));assert.throws(()=>createPaid(f.boss),/下架/);
+});
+
+test('快速下单可指定离线成员，实际接单仍需上线且具备对应资格',()=>{
+  const f=fixture(false);f.call(f.player,'POST','/v1/player/availability',{available:false});
+  const order=f.call<Order>(f.boss,'POST','/v1/orders',{serviceType:'hourly',gameId:'valorant',region:'国服 · 华东',quantity:1,playerId:'p1'});
+  f.call(f.boss,'POST',`/v1/orders/${order.id}/pay`);assert.equal(order.preferredPlayerId,'p1');
+  assert.throws(()=>f.call(f.player,'POST',`/v1/orders/${order.id}/accept`),/休息/);
+  f.call(f.player,'POST','/v1/player/availability',{available:true});
+  assert.equal(f.call<Order>(f.player,'POST',`/v1/orders/${order.id}/accept`).status,'accepted');
+});
