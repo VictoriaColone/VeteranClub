@@ -89,3 +89,5 @@ H5 与微信小程序的登录和支付渠道需分别配置，业务订单及�
 工作区依赖由 npm 提升到仓库根目录，uni 的微信组件路径编译无法直接处理该相对层级。Vite 在每次启动时从已锁定的 uni-ui 包复制实际使用的 `uni-icons`、`uni-number-box` 到忽略入库的 `src/components/vendor-ui`，再经 `@club-ui` 别名编译。没有修改 node_modules，不需要手工复制，也没有维护另一套组件源码。
 
 参考：[自定义导航胶囊](https://uniapp.dcloud.net.cn/api/ui/menuButton.html)、[窗口及安全区信息](https://uniapp.dcloud.net.cn/api/system/info.html)、[跨端样式](https://zh.uniapp.dcloud.io/tutorial/syntax-css.html)、[网络方法支持表](https://uniapp.dcloud.net.cn/api/request/request.html)。
+
+公共单筛选与 H5 共用实现：组队支持 1～8 小时时长范围及净报酬价格范围；护航只显示团队净报酬价格范围。两类筛选独立，空值不限；表头右侧打开，确认后应用，取消不改变结果。接单状态开关在“我的”。
