@@ -22,7 +22,8 @@ export function parseHallFilter(type:ServiceType,draft:HallFilterDraft):HallFilt
   return result;
 }
 
-export function matchesHallFilter(order:Order,filter:HallFilter){
+export function matchesHallFilter(order:Order,filter:HallFilter,enabled=true){
+  if(!enabled)return true;
   return (order.serviceType!=='hourly'||((filter.minHours===undefined||order.quantity>=filter.minHours)&&(filter.maxHours===undefined||order.quantity<=filter.maxHours)))
     &&(filter.minEarnings===undefined||order.earnings>=filter.minEarnings)
     &&(filter.maxEarnings===undefined||order.earnings<=filter.maxEarnings);
