@@ -6,10 +6,29 @@
 
 ## 在线体验与分享
 
+以下为原 Sites 体验地址；目前原项目管理接口不可用，线上内容未包含最新改动。
+
 - 移动端：<https://stellar-club-h5.dear-goose-6136.chatgpt.site/mobile/>
 - 管理后台：<https://stellar-club-h5.dear-goose-6136.chatgpt.site/admin/>
 
 Demo 已按项目所有者要求设置为公开体验，任何拿到链接的人都可访问，无需 ChatGPT 登录。每个人使用各自浏览器内的模拟数据，不会跨设备同步；模拟登录、付款和结算不连接真实业务。
+
+### GitHub Pages 自动发布
+
+仓库已包含 `.github/workflows/pages.yml`。首次需由仓库管理员进入 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。然后在 Actions 中运行 **Publish demo to GitHub Pages**；以后推送 `main` 自动检查、构建和部署。首次部署成功前，下列地址不可作为已上线链接分享：
+
+- 用户端：`https://victoriacolone.github.io/VeteranClub/mobile/`
+- 运营后台：`https://victoriacolone.github.io/VeteranClub/admin/`
+
+仅上传 `dist/` 静态模拟应用，不上传源码目录、环境文件、数据库或任何密钥。后台也是使用虚构数据的公开演示；真实运营后台需另行接入服务端鉴权。访问不依赖本地电脑开机，不同设备的模拟数据独立，国内网络连通性需要实际测试。
+
+本地验证 GitHub Pages 的项目子路径构建：
+
+```bash
+SITE_BASE_PATH=/VeteranClub/ SITE_OUTPUT_DIR=dist-pages npm run build
+```
+
+默认 `npm run build` 仍输出根路径部署用的 `dist/`，`dist-pages/` 仅用于验证，不影响本地预览。
 
 两端共用 `shared/theme.css` 的颜色、圆角、间距和状态语义：深色背景、荧光绿主操作、紫色辅助。移动端以搜索、游戏筛选、快速下单为主；后台首页提供待派单、售后和结算快捷入口。
 

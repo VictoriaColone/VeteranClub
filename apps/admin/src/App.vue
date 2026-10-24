@@ -81,7 +81,7 @@ function exportCsv(kind='orders'){
   const escape=(v:string|number)=>{const text=String(v).replace(/^[=+\-@]/,"'$&");return '"'+text.replace(/"/g,'""')+'"';};
   const blob=new Blob(['\ufeff'+rows.map(row=>row.map(escape).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`星曜电竞-${kind==='settlements'?'结算':'订单'}-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);ElMessage.success('CSV 已导出');
 }
-function openMobile(){window.open('/mobile/#/pages/index/index','_blank');}
+function openMobile(){window.open(`${import.meta.env.BASE_URL}../mobile/#/pages/index/index`,'_blank');}
 function doSearch(){navigate('orders');query.value=globalSearch.value;globalSearch.value='';}
 onMounted(async()=>{sidebarViewport.addEventListener('change',onSidebarViewportChange);window.addEventListener('keydown',onSidebarKeydown);await load();if(!availableNav.value.some(n=>n.id===page.value))navigate('dashboard');if(page.value==='settings')openSettings();refreshTimer=setInterval(()=>load(true),12000);window.addEventListener('hashchange',onHash);window.addEventListener('storage',onStorage);});
 function onStorage(e:StorageEvent){if(e.key==='stellar-club:database:v1')load(true);}

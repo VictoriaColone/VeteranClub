@@ -25,5 +25,5 @@ export default defineConfig(({mode}) => {
       miniprogramRoot: './', setting: {urlCheck:true, es6:true, minified:true},
     }, null, 2));
   }
-  return { plugins: [plugin()], resolve:{alias:{'@club-ui':uiTarget}}, optimizeDeps: {exclude: ['@stellar/core']}, server: {fs: {allow: ['../..']}} };
+  return { base: process.env.UNI_H5_BASE || '/mobile/', plugins: [plugin()], resolve:{alias:{'@club-ui':uiTarget}}, optimizeDeps: {exclude: ['@stellar/core']}, server: {fs: {allow: ['../..']}} };
 });
