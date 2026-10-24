@@ -136,3 +136,15 @@ test('商品资格撤销后不再公开展示或上架，旧版升级补充商�
 });
 
 test('组队商品价格按所选小时数快照计费，指定商品订单不进入公共大厅',()=>{const f=fixture(false);const p=f.call<Product>(f.player,'POST','/v1/products',goodsInput('hourly'));const o=f.call<Order>(f.boss,'POST','/v1/orders',{productId:p.id,serviceType:'hourly',gameId:p.gameId,region:'国服 · 华东',quantity:3,taskPrice:1});assert.equal(o.amount,29700);assert.equal(o.unitPrice,9900);assert.equal(o.quantity,3);assert.equal(o.task,'');f.call(f.boss,'POST',`/v1/orders/${o.id}/pay`);assert.ok(!f.call<Order[]>(f.player,'GET','/v1/orders?scope=hall').some(v=>v.id===o.id));});
+
+for(const serviceType of ['hourly','escort'] as const)test(`${serviceType}：不能直接指定自己下单，也不能通过自己的商品绕过限制`,()=>{
+  const f=fixture(false),member=f.player;
+  const product=f.call<Product>(member,'POST','/v1/products',{serviceType,gameId:'valorant',title:'自购拦截测试商品',description:'验证同一用户不能作为自己的服务成员。',price:12800,task:'100w纯带出'});
+  const input={serviceType,gameId:'valorant',region:'国服 · 华东',quantity:1,task:'100w纯带出',taskPrice:12800};
+  const before=f.server.read().orders.length;
+  assert.throws(()=>f.call(member,'POST','/v1/orders',{...input,playerId:member.playerId}),/不可预约/);
+  assert.throws(()=>f.call(member,'POST','/v1/orders',{...input,productId:product.id}),/不可预约/);
+  assert.equal(f.server.read().orders.length,before);
+  const other=f.call<Order>(f.boss,'POST','/v1/orders',{...input,productId:product.id});
+  assert.equal(other.preferredPlayerId,member.playerId);assert.notEqual(other.bossId,member.userId);
+});
