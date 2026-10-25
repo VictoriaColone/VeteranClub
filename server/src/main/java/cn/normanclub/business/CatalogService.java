@@ -46,18 +46,19 @@ public class CatalogService {
         Product item=new Product();item.id=Crypto.id("SP_");item.userId=actor.id();item.playerId=p.id;item.sellerName=p.name;item.gameId=game;item.serviceType=type;item.title=in.text("title",2,40);item.description=in.text("description",5,200);item.price=in.integer("price",100,100000);item.task=type.equals("escort")?in.text("task",1,200):"";item.active=true;item.createdAt=clock.millis();db.insertProduct(item);audit.record(actor.name(),"发布商品",item.id,item.title);return item;
     }
     @Transactional public Product active(Actor actor,String id,Map<String,Object> body){
-        actor.user();Profile p=db.lockProfile(self(actor).id);Product item=db.lockProduct(Inputs.identifier(id));require(item!=null,404,"商品不存在");require(item.userId.equals(actor.id()),403,"只能管理自己的商品");boolean active=new Inputs(body,"active").bool("active");if(active)require(qualified(p,item.serviceType,item.gameId),403,"上架需要对应的考核资格");db.productActive(id,active);item.active=active;audit.record(actor.name(),active?"上架商品":"下架商品",id,item.title);return item;
+        actor.user();Profile p=db.lockProfile(self(actor).id);Product item=db.lockProduct(Inputs.identifier(id));require(item!=null,404,"商品不存在");require(actor.id().equals(item.userId),403,"只能管理自己的商品");boolean active=new Inputs(body,"active").bool("active");if(active)require(qualified(p,item.serviceType,item.gameId),403,"上架需要对应的考核资格");db.productActive(id,active);item.active=active;audit.record(actor.name(),active?"上架商品":"下架商品",id,item.title);return item;
     }
     public Map<String,Object> applicationView(Application a){return map("id",a.id,"userId",a.userId,"playerId",a.playerId,"name",a.name,"serviceType",a.serviceType,"gameIds",strings(a.gameIds),"introduction",a.introduction,"status",a.status,"score",a.score,"reviewNote",a.reviewNote,"createdAt",a.createdAt,"reviewedAt",a.reviewedAt);}
     public List<Map<String,Object>> applications(Actor a){return db.applications(a.staff(),a.id()).stream().map(this::applicationView).toList();}
     @Transactional public Map<String,Object> apply(Actor actor,Map<String,Object> body){
-        Profile p=db.lockProfile(self(actor).id);Inputs in=new Inputs(body,"serviceType","gameIds","introduction");String type=type(in.text("serviceType",1,12));List<String> games=in.strings("gameIds",3);games.forEach(CatalogService::game);
-        require(db.qualifications(p.id).stream().noneMatch(q->q.serviceType.equals(type)),409,"该方向已取得资格");
-        Application a=new Application();a.id=Crypto.id("AP_");a.userId=actor.id();a.playerId=p.id;a.name=p.name;a.serviceType=type;a.gameIds=encode(games);a.introduction=in.text("introduction",10,500);a.status="pending";a.activeKey=actor.id()+":"+type;a.createdAt=clock.millis();db.insertApplication(a);audit.record(actor.name(),"提交入驻申请",a.id,type.equals("escort")?"护航资格":"组队资格");return applicationView(a);
+        Profile p=db.lockProfile(self(actor).id);Inputs in=new Inputs(body,"serviceType","gameIds","introduction");String type=type(in.text("serviceType",1,12));List<String> games=in.strings("gameIds",1);String gameId=games.getFirst();game(gameId);
+        require(db.qualified(p.id,type,gameId)==0,409,"该游戏的该类型已取得资格");
+        require(db.applications(false,actor.id()).stream().noneMatch(a->a.serviceType.equals(type)&&Set.of("pending","assessment").contains(a.status)&&strings(a.gameIds).contains(gameId)),409,"该游戏该类型已有申请正在审核或考核中");
+        Application a=new Application();a.id=Crypto.id("AP_");a.userId=actor.id();a.playerId=p.id;a.name=p.name;a.serviceType=type;a.gameIds=encode(games);a.introduction=in.text("introduction",10,500);a.status="pending";a.activeKey=actor.id()+":"+type+":"+gameId;a.createdAt=clock.millis();db.insertApplication(a);audit.record(actor.name(),"提交入驻申请",a.id,game(gameId).get("name")+" · "+(type.equals("escort")?"护航资格":"组队资格"));return applicationView(a);
     }
     @Transactional public Map<String,Object> review(Actor actor,String id,Map<String,Object> body){
         actor.roles("admin");Inputs in=new Inputs(body,"status","score","note");String status=in.text("status",1,16),note=in.text("note",2,500);require(Set.of("assessment","approved","rejected").contains(status),400,"审核操作无效");
-        Application a=db.lockApplication(Inputs.identifier(id));require(a!=null,404,"申请不存在");require(Set.of("pending","assessment").contains(a.status),409,"该申请已处理");
+        Application a=db.lockApplication(Inputs.identifier(id));require(a!=null,404,"申请不存在");require(Set.of("pending","assessment").contains(a.status),409,"该申请已处理");require(strings(a.gameIds).size()==1,409,"考核申请需按游戏分别处理");
         Profile p=db.lockProfile(a.playerId);require(p!=null,404,"用户档案不存在");
         if(status.equals("assessment"))require(a.status.equals("pending"),409,"已进入专项考核");
         if(status.equals("approved")){

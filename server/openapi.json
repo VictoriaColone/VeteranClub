@@ -1397,7 +1397,8 @@
                       ]
                     },
                     "minItems": 1,
-                    "maxItems": 3
+                    "maxItems": 1,
+                    "description": "每项申请仅对应一个游戏；组队与护航分别申请、审核和计分，已通过其他游戏不影响继续申请。"
                   },
                   "introduction": {
                     "type": "string"

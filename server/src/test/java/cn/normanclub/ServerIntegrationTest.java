@@ -119,6 +119,31 @@ class ServerIntegrationTest {
         assertThrows(ApiException.class,()->catalog.publish(u.actor,map("gameId","delta","serviceType","escort","title","测试护航商品","description","没有护航资格不得发布","price",1000,"task","100w纯带出")));
     }
     boolean servicesQualified(User u,String type){return catalog.qualified(profiles.profile(u.actor.playerId()),type,"delta");}
+    String applyGame(User u,String type,String game){return (String)catalog.apply(u.actor,map("serviceType",type,"gameIds",List.of(game),"introduction","单个游戏单种服务独立申请，参与专项考核。")).get("id");}
+    void approveGame(String id){catalog.review(operator,id,map("status","assessment","note","该项资料审核通过"));catalog.review(operator,id,map("status","approved","score",90,"note","该游戏该服务专项考核通过"));}
+    @Test void gameAndServiceAreIndependentAcrossApplicationHallAcceptAndAssignment(){
+        User member=user(),buyer=user();String hourlyDelta=applyGame(member,"hourly","delta"),escortDelta=applyGame(member,"escort","delta"),hourlyValorant=applyGame(member,"hourly","valorant");
+        assertThrows(ApiException.class,()->applyGame(member,"hourly","delta"));approveGame(hourlyDelta);approveGame(escortDelta);catalog.availability(member.actor,map("available",true));
+        assertThrows(ApiException.class,()->applyGame(member,"hourly","delta"));
+        assertThrows(ApiException.class,()->catalog.apply(member.actor,map("serviceType","escort","gameIds",List.of("valorant","lol"),"introduction","不能将多个游戏合在同一次考核中")));
+        for(String game:List.of("delta","valorant","lol"))for(String type:List.of("hourly","escort")){
+            boolean allowed=game.equals("delta");assertEquals(allowed,catalog.qualified(profiles.profile(member.actor.playerId()),type,game));
+            String region=((List<String>)CatalogService.game(game).get("regions")).getFirst();
+            String id=(String)orders.create(buyer.actor,map("productId","club-"+type+"-"+game,"gameId",game,"serviceType",type,"region",region,"quantity",1),unique()).get("id");paid(buyer,orderDb.order(id));
+            assertEquals(allowed,orders.list(member.actor,Map.of("scope","hall")).stream().anyMatch(o->id.equals(o.get("id"))));
+            if(allowed)assertEquals("accepted",orders.act(member.actor,id,"accept",Map.of()).get("status"));
+            else {
+                assertThrows(ApiException.class,()->orders.act(member.actor,id,"accept",Map.of()));
+                assertThrows(ApiException.class,()->orders.act(operator,id,"assign",map("playerId",member.actor.playerId(),"reason","校验跨游戏派单限制")));
+                assertThrows(ApiException.class,()->catalog.publish(member.actor,map("gameId",game,"serviceType",type,"title","越界游戏商品","description","未通过该游戏该服务不能发布商品","price",6800,"task","100w纯带出")));
+            }
+            orders.act(buyer.actor,id,"refund",map("amount",orderDb.order(id).amount,"reason","结束独立资格测试"));
+            orders.act(operator,id,"review-refund",map("approve",true,"note","测试结束，模拟退回款项"));payments.processRefund(orderDb.order(id).refundId);
+        }
+        approveGame(hourlyValorant);assertTrue(catalog.qualified(profiles.profile(member.actor.playerId()),"hourly","valorant"));assertFalse(catalog.qualified(profiles.profile(member.actor.playerId()),"escort","valorant"));assertTrue(catalog.qualified(profiles.profile(member.actor.playerId()),"escort","delta"));
+        assertNotNull(applyGame(member,"hourly","lol"));assertNotNull(applyGame(member,"escort","valorant"));
+        var view=catalog.profileView(profiles.profile(member.actor.playerId()));assertEquals(List.of("delta"),((Map<?,?>)view.get("qualificationGames")).get("escort"));
+    }
     @Autowired PublicOrderPool publicPool;
     @Test void officialCatalogPriceAndPoolRecoverFromDatabaseAndRefundWithoutReason(){
         User buyer=user(),member=qualified("escort");

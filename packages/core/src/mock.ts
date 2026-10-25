@@ -3,7 +3,7 @@ import {parseMockPath,shanghaiDay} from './runtime';
 import { CLUB_NAME } from './brand';
 import {createClubProducts,clubProductId} from './club-products';
 import {isClubProduct} from './types';
-import { canServe, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
+import { canServe, qualifiedGames, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
 const clone=<T>(data:T):T=>JSON.parse(JSON.stringify(data));
@@ -40,6 +40,12 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
           db.orders.forEach(o=>{if(legacy[o.gameId]){const old=o.gameName;o.gameId='delta';o.gameName='三角洲';o.region='国服';o.timeline.push({at:clock(),actor:'系统',label:'演示游戏配置已更新',note:old+' → 三角洲'});}if(o.serviceType==='escort'&&(!o.task||o.task==='完成指定地图任务并成功撤离'))o.task=DEFAULT_ESCORT_TASK;});
           db.catalogRevision=CATALOG_REVISION;changed=true;
         }
+        // Materialize legacy grants once, before any later application can extend gameIds.
+        for(const p of db.players){p.qualificationGames??={};for(const type of p.qualifications)if(!p.qualificationGames[type]){p.qualificationGames[type]=[...p.gameIds];changed=true;}}
+        db.applications=db.applications.flatMap(a=>{
+          if(!['pending','assessment'].includes(a.status)||a.gameIds.length<=1)return [a];
+          changed=true;return a.gameIds.map((game,i)=>({...a,id:i===0?a.id:a.id.slice(0,32)+'-'+game,gameIds:[game]}));
+        });
         if(!Array.isArray(db.products)){db.products=createProducts(db.players,db.games,clock());changed=true;}
         for(const official of createClubProducts())if(!db.products.some(p=>p.id===official.id)){db.products.push(official);changed=true;}
         if(db.settings.commissionBps!==DEFAULT_COMMISSION_BPS||db.settings.unpaidTimeoutMinutes!==UNPAID_TIMEOUT_MINUTES){db.settings.commissionBps=DEFAULT_COMMISSION_BPS;db.settings.unpaidTimeoutMinutes=UNPAID_TIMEOUT_MINUTES;changed=true;}
@@ -175,11 +181,11 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     else if(route==='/v1/applications'&&method==='GET'){data=isStaff(s.role)?db.applications:db.applications.filter(a=>a.userId===s.userId);}
     else if(route==='/v1/applications'&&method==='POST'){
-      check(profile&&!isStaff(s.role),'请使用用户账号申请',403);check(['hourly','escort'].includes(body.serviceType),'请选择申请方向');check(Array.isArray(body.gameIds)&&body.gameIds.length>0&&body.gameIds.every((g:unknown)=>db.games.some(game=>game.id===g)),'请选择有效游戏');check(String(body.introduction||'').trim().length>=10&&String(body.introduction).length<=500,'请填写 10～500 字的经验及考核申请说明');check(!profile.qualifications.includes(body.serviceType),'该方向已通过考核');check(!db.applications.some(a=>a.userId===s.userId&&a.serviceType===body.serviceType&&['pending','assessment'].includes(a.status)),'已有申请正在审核或考核中');
+      check(profile&&!isStaff(s.role),'请使用用户账号申请',403);check(['hourly','escort'].includes(body.serviceType),'请选择申请方向');check(Array.isArray(body.gameIds)&&body.gameIds.length===1&&body.gameIds.every((g:unknown)=>db.games.some(game=>game.id===g)),'请每次选择一个有效游戏，分别申请考核');check(String(body.introduction||'').trim().length>=10&&String(body.introduction).length<=500,'请填写 10～500 字的经验及考核申请说明');check(!canServe(profile,body.serviceType,body.gameIds[0]),'该游戏的该类型已通过考核');check(!db.applications.some(a=>a.userId===s.userId&&a.serviceType===body.serviceType&&a.gameIds.includes(body.gameIds[0])&&['pending','assessment'].includes(a.status)),'已有申请正在审核或考核中');
       const application={id:id('AP-'),userId:s.userId,playerId:profile.id,name:s.name,serviceType:body.serviceType,gameIds:[...new Set<string>(body.gameIds)],introduction:String(body.introduction).trim(),status:'pending' as const,createdAt:clock()};db.applications.unshift(application);audit(db,s,'提交入驻申请',application.id,body.serviceType==='escort'?'护航资格':'组队资格');save(db);data=application;
     }
     else if(/^\/v1\/admin\/applications\/[^/]+\/review$/.test(route)&&method==='POST'){
-      can(s,'admin');const a=db.applications.find(a=>a.id===route.split('/')[4]);check(a,'申请不存在',404);check(['pending','assessment'].includes(a.status),'该申请已处理');check(['assessment','approved','rejected'].includes(body.status),'审核操作无效');check(String(body.note||'').trim().length>=2,'请填写审核或考核说明');if(body.status==='assessment')check(a.status==='pending','已进入考核');if(body.status==='approved'){check(a.status==='assessment','需先通过资料审核并进入考核');check(Number.isInteger(body.score)&&body.score>=60&&body.score<=100,'考核通过需要 60～100 分的成绩');const p=db.players.find(p=>p.id===a.playerId)!;p.qualifications.push(a.serviceType);p.qualificationGames??={};p.qualificationGames[a.serviceType]=a.gameIds;p.gameIds=[...new Set([...p.gameIds,...a.gameIds])];p.approved=true;}a.status=body.status;a.score=body.score;a.reviewNote=String(body.note).trim().slice(0,500);a.reviewedAt=clock();audit(db,s,'审核入驻申请',a.id,a.reviewNote);save(db);data=a;
+      can(s,'admin');const a=db.applications.find(a=>a.id===route.split('/')[4]);check(a,'申请不存在',404);check(['pending','assessment'].includes(a.status),'该申请已处理');check(a.gameIds.length===1,'考核申请需按游戏分别处理');check(['assessment','approved','rejected'].includes(body.status),'审核操作无效');check(String(body.note||'').trim().length>=2,'请填写审核或考核说明');if(body.status==='assessment')check(a.status==='pending','已进入考核');if(body.status==='approved'){check(a.status==='assessment','需先通过资料审核并进入考核');check(Number.isInteger(body.score)&&body.score>=60&&body.score<=100,'考核通过需要 60～100 分的成绩');const p=db.players.find(p=>p.id===a.playerId)!;const previous=qualifiedGames(p,a.serviceType);p.qualifications=[...new Set([...p.qualifications,a.serviceType])];p.qualificationGames??={};p.qualificationGames[a.serviceType]=[...new Set([...previous,...a.gameIds])];p.gameIds=[...new Set([...p.gameIds,...a.gameIds])];p.approved=true;}a.status=body.status;a.score=body.score;a.reviewNote=String(body.note).trim().slice(0,500);a.reviewedAt=clock();audit(db,s,'审核入驻申请',a.id,a.reviewNote);save(db);data=a;
     }
     else if(route==='/v1/player/availability'&&method==='POST'){check(profile,'用户资料不存在');check(typeof body.available==='boolean','接单状态无效');const p=db.players.find(p=>p.id===s.playerId)!;p.available=body.available;audit(db,s,'接单状态',p.name,p.available?'开始接单':'休息中');save(db);data=p;}
     else if(/^\/v1\/admin\/players\/[^/]+$/.test(route)&&method==='PATCH'){

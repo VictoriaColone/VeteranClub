@@ -85,3 +85,19 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .provider-progress{margin-left:auto;color:var(--club-secondary);font-size:10px;text-align:right;max-width:45%}
 .checkout-service{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--club-secondary)}
 .product-provider .input-help{display:block;font-size:11px;margin-top:5px}
+
+.qualification-explainer{font-size:12px;line-height:1.8;color:var(--club-secondary);margin:-4px 0 16px}
+.qualification-game{padding:16px;border:1px solid var(--club-border);border-radius:16px;background:var(--club-surface);margin-bottom:12px}
+.qualification-game-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;margin-bottom:14px}
+.qualification-game-title>text:last-child{margin-left:auto;font-size:10px;font-weight:400;color:var(--club-muted)}
+.qualification-directions{display:flex;gap:10px;align-items:stretch}
+.qualification-cell{flex:1;min-width:0;border:1px solid var(--club-border);border-radius:12px;padding:12px;background:#ffffff03;display:flex;flex-direction:column;align-items:flex-start}
+.qualification-cell.certified{border-color:#d9fd883d;background:#d9fd8807}
+.qualification-cell-heading{font-size:13px;font-weight:600;line-height:1.7}
+.qualification-state{font-size:11px;color:var(--club-secondary);line-height:1.8;margin:4px 0 10px}
+.certified .qualification-state,.qualification-access{color:var(--club-primary)}
+.qualification-access{font-size:10px;line-height:1.8;margin-top:auto}
+.qualification-cell>.secondary{width:100%;margin-top:auto;font-size:11px;padding:7px 4px;line-height:1.5;min-height:32px}
+.qualification-feedback{font-size:10px;color:var(--club-secondary);line-height:1.7;margin-bottom:12px;overflow-wrap:anywhere}
+.apply-scope{display:flex;align-items:center;gap:12px;padding:16px;border:1px solid var(--club-border);border-radius:12px;background:var(--club-surface);margin:20px 0}
+.apply-scope>view{font-size:15px;font-weight:600}.apply-scope text{display:block;color:var(--club-secondary);font-size:11px;line-height:1.7;font-weight:400;margin-top:4px}

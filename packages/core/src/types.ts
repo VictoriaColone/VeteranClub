@@ -39,5 +39,5 @@ export const orderMembers=(o:Order):TeamMember[]=>o.team?.length?o.team:(o.playe
 export const participantEarnings=(o:Order,playerId?:string)=>{const team=orderMembers(o);const index=team.findIndex(m=>m.playerId===playerId);return index<0?0:Math.floor(o.earnings/team.length)+(index<o.earnings%team.length?1:0);};
 export const orderSummary=(o:Order)=>o.serviceType==='escort'?o.task:`${o.quantity} 小时 · 按时长完成`;
 
-export const qualifiedGames=(p:Player,type:ServiceType):string[]=>p.qualifications.includes(type)?(p.qualificationGames?.[type]??p.gameIds):[];
+export const qualifiedGames=(p:Player,type:ServiceType):string[]=>p.qualifications.includes(type)?(p.qualificationGames?.[type]??[]):[];
 export const canServe=(p:Player,type:ServiceType,gameId:string)=>p.approved&&qualifiedGames(p,type).includes(gameId);
