@@ -4,9 +4,10 @@ import { ApiError, ClubApi, type Role, type Session } from '@stellar/core';
 import { getMobileTransport } from './services/transport';
 import { isWeixinMiniProgram } from './services/platform';
 export const httpMode=import.meta.env.VITE_API_MODE==='http';
+export const acceptanceMode=import.meta.env.VITE_API_MODE==='acceptance';
 export const api=new ClubApi(getMobileTransport());
 export const useIdentity=defineStore('identity',()=>{
-  const key=httpMode?'norman-mobile-session':'stellar-mobile-session';
+  const key=acceptanceMode?'norman-acceptance-mobile-session':httpMode?'norman-mobile-session':'stellar-mobile-session';
   const saved=(!httpMode||isWeixinMiniProgram)?uni.getStorageSync(key):null;
   const session=ref<Session|null>(saved||null);api.session=session.value;
   function save(value:Session|null){session.value=value;api.session=value;if(!httpMode||isWeixinMiniProgram){if(value)uni.setStorageSync(key,value);else uni.removeStorageSync(key);}}

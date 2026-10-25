@@ -1,4 +1,4 @@
-import { ApiError, createMockTransport, csrfToken, requestKey, type ApiResponse, type Transport } from '@stellar/core';
+import { ApiError, createMockTransport, createAcceptanceTransport, csrfToken, requestKey, type ApiResponse, type Transport } from '@stellar/core';
 import {createUniStorage} from './storage';
 import {isWeixinMiniProgram} from './platform';
 export function createUniHttpTransport(baseUrl:string,miniProgram=isWeixinMiniProgram):Transport {
@@ -11,6 +11,7 @@ export function createUniHttpTransport(baseUrl:string,miniProgram=isWeixinMiniPr
   });
 }
 export function getMobileTransport():Transport {
+  if(import.meta.env.VITE_API_MODE==='acceptance')return createAcceptanceTransport(import.meta.env.VITE_API_BASE_URL||'/api');
   if(import.meta.env.VITE_API_MODE==='http')return createUniHttpTransport(import.meta.env.VITE_API_BASE_URL||'');
   // #ifdef MP-WEIXIN
   return createMockTransport(createUniStorage(uni));

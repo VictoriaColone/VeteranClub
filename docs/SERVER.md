@@ -8,7 +8,7 @@
 
 ## 已保留的真实接口联调环境
 
-当前电脑有单独的 MySQL 8.4 实例，**只监听 `127.0.0.1:3307`**；项目数据库为 `norman_club`，集成测试使用 `norman_test`。数据目录为被 Git 忽略的 `artifacts/mysql-data/`，开发配置保存在权限 600 的 `.local/server.env`。没有使用云服务器上的数据库。
+当前电脑有单独的 MySQL 8.4 实例，**只监听 `127.0.0.1:3307`**；项目数据库为 `norman_club`，集成测试使用 `norman_test`。数据目录为被 Git 忽略的 `artifacts/mysql-data/`，开发配置保存在权限 600 的 `.local/server.env`。本机联调库与服务器内部验收库独立；云端流程、私人访问和数据库查看见[内部验收说明](ACCEPTANCE.md)。
 
 ```bash
 npm run server:dev          # API：127.0.0.1:8080

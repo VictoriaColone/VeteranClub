@@ -39,5 +39,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Private acceptance package and isolation tests
+        working-directory: server
+        run: ./mvnw -B -Pacceptance verify
       - run: npm ci
-      - run: npm run check && npm test && npm run build:all && npm run build:http
+      - run: npm run check && npm test && npm run build:all && npm run build:http && npm run build:acceptance

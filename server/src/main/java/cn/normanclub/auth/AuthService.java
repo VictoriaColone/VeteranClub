@@ -80,7 +80,7 @@ public class AuthService {
         audit.record(staff.name,"员工登录",staff.id,c.setupCipher==null?"密码与动态验证码验证成功":"已绑定动态验证器并登录");
         return issue(staff.id,staff.name,staff.role,null,false);
     }
-    private Login issue(String id,String name,String role,String playerId,boolean bearer) {
+    Login issue(String id,String name,String role,String playerId,boolean bearer) {
         boolean staff=!role.equals("user");String audience=staff?"staff":"user",token=Crypto.token(),csrf=Crypto.token();long seconds=staff?28_800:604_800;
         AuthMapper.Session s=new AuthMapper.Session();s.tokenHash=Crypto.sha256(token);s.accountId=id;s.audience=audience;s.csrfHash=Crypto.sha256(csrf);s.bearer=bearer;s.createdAt=clock.millis();s.lastSeenAt=s.createdAt;s.expiresAt=s.createdAt+seconds*1000;db.insertSession(s);
         return new Login(map("token",bearer?token:"","userId",id,"name",name,"role",role,"playerId",playerId,"expiresAt",s.expiresAt),token,csrf,audience,bearer,seconds);

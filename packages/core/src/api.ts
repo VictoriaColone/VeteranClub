@@ -48,6 +48,15 @@ export function csrfToken(audience:'user'|'staff'){
   const name=`norman-${audience}-csrf=`;return document.cookie.split(';').map(value=>value.trim()).find(value=>value.startsWith(name))?.slice(name.length)||'';
 }
 export function requestKey(){return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;}
+// An explicitly built private acceptance client; normal HTTP never rewrites auth/payment routes.
+export function createAcceptanceTransport(baseUrl:string,audience:'user'|'staff'='user'):Transport {
+  const http=createHttpTransport(baseUrl,audience);
+  return <T>(method:string,path:string,body?:unknown,token?:string,idempotencyKey?:string)=>{
+    if(path==='/v1/auth/mock-login')path='/v1/auth/sms/login/acceptance';
+    else if(method==='POST'&&/^\/v1\/orders\/[A-Za-z0-9_-]+\/(pay|demo-elapse)$/.test(path))path=path.replace('/v1/orders/','/v1/acceptance/orders/');
+    return http<T>(method,path,body,token,idempotencyKey);
+  };
+}
 export function createHttpTransport(baseUrl:string,audience:'user'|'staff'='user'):Transport {
   return async<T>(method:string,path:string,body?:unknown,token?:string,idempotencyKey?:string):Promise<T>=>{
     const csrf=csrfToken(audience);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);

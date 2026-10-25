@@ -20,4 +20,11 @@
     <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build>
+  <profiles><profile><id>acceptance</id><build><directory>target/acceptance</directory><finalName>norman-acceptance</finalName><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><includes><include>**/Acceptance*Test.java</include></includes></configuration></plugin>
+    <plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.2</version><executions>
+      <execution><id>acceptance-source</id><phase>generate-sources</phase><goals><goal>add-source</goal></goals><configuration><sources><source>src/acceptance/java</source></sources></configuration></execution>
+      <execution><id>acceptance-tests</id><phase>generate-test-sources</phase><goals><goal>add-test-source</goal></goals><configuration><sources><source>src/acceptance-test/java</source></sources></configuration></execution>
+    </executions></plugin>
+  </plugins></build></profile></profiles>
 </project>

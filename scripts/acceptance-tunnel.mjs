@@ -1,0 +1,13 @@
+import {readFileSync,existsSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {spawn} from 'node:child_process';
+const root=resolve(import.meta.dirname,'..');
+const python=resolve(root,'artifacts/ops-venv/bin/python');
+const configPath=resolve(root,'.local/acceptance-tunnel.json');
+if(!existsSync(python)||!existsSync(configPath))throw new Error('请先按 docs/ACCEPTANCE.md 准备受限 SSH 账号、本机私钥和 Paramiko 环境');
+const config=JSON.parse(readFileSync(configPath,'utf8'));
+if(typeof config.host!=='string'||!/^[A-Za-z0-9.-]+$/.test(config.host))throw new Error('无效的服务器地址');
+const child=spawn(python,[resolve(root,'deploy/acceptance/tunnel.py'),'--host',config.host,'--key',resolve(root,'.local/acceptance-tunnel'),'--known-hosts',resolve(root,'.local/aliyun-host-key')],{cwd:root,stdio:'inherit'});
+child.on('error',error=>{console.error(error.message);process.exit(1);});
+child.on('exit',code=>process.exit(code??1));
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));

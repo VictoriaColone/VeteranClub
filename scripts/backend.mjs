@@ -4,7 +4,7 @@ import {spawn,spawnSync} from 'node:child_process';
 
 const root=resolve(import.meta.dirname,'..');
 const env={...process.env};
-const local=resolve(root,'.local/server.env');
+const local=resolve(root,process.env.CLUB_ENV_FILE||'.local/server.env');
 if(existsSync(local))for(const line of readFileSync(local,'utf8').split(/\r?\n/)){
   if(!line||line.startsWith('#'))continue;const at=line.indexOf('=');if(at>0&&!Object.hasOwn(env,line.slice(0,at)))env[line.slice(0,at)]=line.slice(at+1);
 }
@@ -25,6 +25,7 @@ const command=process.argv[2]||'run',extra=process.argv.slice(3);
 let args;
 if(command==='run')args=['spring-boot:run'];
 else if(command==='start'){executable=env.JAVA_HOME?resolve(env.JAVA_HOME,'bin/java'):'java';args=['-jar',resolve(root,'server/target/norman-server-1.0.0.jar')];}
+else if(command==='start-acceptance'){executable=env.JAVA_HOME?resolve(env.JAVA_HOME,'bin/java'):'java';args=['-jar',resolve(root,'server/target/acceptance/norman-acceptance.jar')];}
 else if(command==='test')args=['test',...extra];
 else if(command==='package')args=['verify',...extra];
 else if(['bootstrap-admin','reset-staff'].includes(command)){
