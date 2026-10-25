@@ -102,15 +102,20 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .apply-scope{display:flex;align-items:center;gap:12px;padding:16px;border:1px solid var(--club-border);border-radius:12px;background:var(--club-surface);margin:20px 0}
 .apply-scope>view{font-size:15px;font-weight:600}.apply-scope text{display:block;color:var(--club-secondary);font-size:11px;line-height:1.7;font-weight:400;margin-top:4px}
 
-/* Orders and onboarding are sibling views within the personal page. */
+/* Receiving members manage their orders and products in the personal page. */
 .profile-subtabs{display:flex;gap:6px;padding:5px;margin-top:22px;border:1px solid var(--club-border);border-radius:13px;background:var(--club-surface)}
 .profile-subtabs>button{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;border:1px solid transparent;border-radius:9px;color:var(--club-secondary);font-size:14px;font-weight:550}
 .profile-subtabs>button.active{border-color:#d9fd8838;background:var(--club-green-bg);color:var(--club-primary)}
 .profile-tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;padding:1px 5px;border-radius:9px;background:var(--club-purple-bg);color:var(--club-purple);font-size:10px;line-height:16px}
-.profile-panel>.section-top{margin-top:20px}
+.profile-panel{margin-top:20px}
 
 .hall-scope-switch{margin-top:0}
 .hall-game-filter{margin-bottom:22px}
 .hall-type-filter{flex-wrap:wrap;margin-bottom:18px}
 .hall-type-filter>button{flex:1;min-width:0;white-space:nowrap}
 .hall-product-name{margin-top:10px;font-size:11px;color:var(--club-secondary)}
+
+.profile-products-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.profile-products-toolbar>text{font-size:11px;color:var(--club-secondary)}
+.owned-product-meta{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:11px;line-height:1.8;color:var(--club-secondary)}
+.onboarding-sheet .qualification-explainer{margin:10px 0 18px}

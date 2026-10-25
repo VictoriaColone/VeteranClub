@@ -7,8 +7,8 @@ export function mobileRefreshResources(tab: string, sheet: string | null, canRec
   if (tab === 'home') resources.add('products');
   if (tab === 'me') ['wallet', 'applications', 'myProducts'].forEach(key => resources.add(key as MobileResource));
   if (tab === 'orders' || ['order', 'pay', 'refund', 'finish', 'assistants'].includes(sheet || '')) resources.add('wallet');
-  if (sheet === 'apply') resources.add('applications');
-  if (sheet === 'my-products') resources.add('myProducts');
+  if (['apply', 'onboarding'].includes(sheet || '')) resources.add('applications');
+  if (tab === 'my-products' && canReceive) resources.add('myProducts');
   if (canReceive && (full || tab === 'hall')) resources.add('hall');
   return [...resources];
 }

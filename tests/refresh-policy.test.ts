@@ -17,7 +17,12 @@ test('public hall is never polled without receiving qualifications', () => {
 test('order details refresh income while profile and product data stay scoped to their views', () => {
   assert.ok(mobileRefreshResources('home', 'order', true).includes('wallet'));
   assert.ok(mobileRefreshResources('me', null, false).includes('applications'));
-  assert.ok(mobileRefreshResources('home', 'my-products', true).includes('myProducts'));
+  assert.ok(mobileRefreshResources('orders', 'onboarding', false).includes('applications'));
+  const products = mobileRefreshResources('my-products', null, true);
+  assert.ok(products.includes('myProducts'));
+  assert.ok(!products.includes('wallet') && !products.includes('applications'));
+  assert.ok(!mobileRefreshResources('orders', null, false).includes('myProducts'));
+  assert.ok(!mobileRefreshResources('my-products', null, false).includes('myProducts'));
   assert.ok(mobileRefreshResources('orders', null, true, true).includes('products'), 'mutations can force a complete refresh');
 });
 
