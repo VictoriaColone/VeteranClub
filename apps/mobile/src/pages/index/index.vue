@@ -194,7 +194,7 @@ onShareAppMessage(()=>({title:(settings.value?.name||CLUB_NAME)+' · 好游戏�
     <view v-if="error" class="error-box">{{error}}<button @tap="load()">重新加载</button></view>
     <view v-if="loading" class="loading"><view class="loading-ring"/> 正在加载…</view>
     <view v-else-if="tab==='home'||tab==='hall'" class="content">
-      <view class="greeting">PLAY WITH PURPOSE</view><view class="page-title">{{tab==='home'?'发现新的协作':'发布新的商品'}}</view>
+      <template v-if="tab==='home'"><view class="greeting">PLAY WITH PURPOSE</view><view class="page-title">发现新的协作</view></template>
       <view class="service-switch"><button :class="{active:serviceType==='hourly'}" @tap="serviceType='hourly'"><text>{{tab==='home'?'邀请组队':'组队订单'}}</text><text>约定时长 · 轻松同行</text></button><button :class="{active:serviceType==='escort'}" @tap="serviceType='escort'"><text>{{tab==='home'?'邀请护航':'护航订单'}}</text><text>指定任务 · 目标达成</text></button></view>
       <view class="game-filter" role="group" aria-label="按游戏筛选">
         <button :class="{active:selectedGame==='all'}" :aria-pressed="selectedGame==='all'" @tap="selectedGame='all'">
