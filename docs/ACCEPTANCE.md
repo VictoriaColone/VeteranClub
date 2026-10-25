@@ -70,6 +70,8 @@ python3 deploy/acceptance/tunnel.py --host <服务器公网IP> \
 
 ## 检查、数据库与备份
 
+需要在网页中浏览数据库表、筛选记录、查询 SQL 或导入导出，参见[数据库可视化管理](DATABASE-UI.md)。它通过同一 SSH 隧道的 `/database/` 入口访问，使用现有 MySQL 账号登录。
+
 在服务器执行以下命令：
 
 ```bash
