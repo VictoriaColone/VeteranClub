@@ -12,7 +12,7 @@ import {serviceAvailability} from '../../services/service-availability';
 import {emptyHallFilterDraft,parseHallFilter,matchesHallFilter,type HallFilterDraft} from '../../services/hall-filter';
 import {emptyHallPreferences,loadHallPreferences,saveHallPreferences} from '../../services/hall-preferences';
 import {createUniStorage} from '../../services/storage';
-import { CLUB_NAME, CLUB_NAME_EN, ApiError, DEFAULT_ESCORT_TASK, canServe, qualifiedGames, money, compactMoney, statusLabels, serviceLabels, time, orderMembers, participantEarnings, orderSummary, type Game, type Player, type Order, type Settlement, type ClubSettings, type ServiceType, type Application, type Product } from '@stellar/core';
+import { CLUB_NAME, CLUB_NAME_EN, ApiError, CATALOG_TTL_MS, mobileRefreshResources, refreshDelay, DEFAULT_ESCORT_TASK, canServe, qualifiedGames, money, compactMoney, statusLabels, serviceLabels, time, orderMembers, participantEarnings, orderSummary, type Game, type Player, type Order, type Settlement, type ClubSettings, type ServiceType, type Application, type Product } from '@stellar/core';
 const identity=useIdentity();
 watch(()=>identity.session?.userId,(id,previous)=>{if(httpMode&&id&&id!==previous)void load();});
 const platformLayout=ref(getPlatformLayout());
@@ -38,7 +38,7 @@ type Sheet='accounts'|'player'|'checkout'|'pay'|'order'|'refund'|'finish'|'help'
 const sheet=ref<Sheet|null>(null),selectedPlayer=ref<Player|null>(null),selectedOrder=ref<Order|null>(null);
 const checkoutGame=ref('valorant'),checkoutType=ref<ServiceType>('hourly'),region=ref(''),quantity=ref(1),note=ref(''),task=ref(DEFAULT_ESCORT_TASK),taskPrice=ref('128'),agreed=ref(true);
 const refundReason=ref(''),refundAmount=ref(0),finishNote=ref(''),taskConfirmed=ref(false),applyType=ref<ServiceType>('hourly'),applyGames=ref<string[]>([]),introduction=ref('');
-const now=ref(Date.now()),toast=ref('');let toastTimer:ReturnType<typeof setTimeout>;let interval:ReturnType<typeof setInterval>;let ticker:ReturnType<typeof setInterval>;
+const now=ref(Date.now()),toast=ref('');let toastTimer:ReturnType<typeof setTimeout>;let interval:ReturnType<typeof setTimeout>;let ticker:ReturnType<typeof setInterval>;
 const me=computed(()=>players.value.find(p=>p.userId===identity.session?.userId));
 const isMine=(o:Order)=>o.bossId===identity.session?.userId;
 const isLead=(o:Order)=>o.playerId===me.value?.id;
@@ -74,20 +74,41 @@ const remaining=(o:Order)=>Math.max(0,o.quantity*3600000-(now.value-(o.startedAt
 const countdown=(o:Order)=>{const m=Math.ceil(remaining(o)/60000);return m>0?`剩余 ${Math.floor(m/60)} 小时 ${m%60} 分钟`:'约定时长已完成';};
 function notify(message:string){toast.value=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',3200);}
 async function run(job:()=>Promise<void>){if(busy.value)return;busy.value=true;try{await job();}catch(e){notify(e instanceof Error?e.message:'操作失败，请重试');}finally{busy.value=false;}}
-async function load(silent=false){
-  if(refreshing.value||(httpMode&&silent&&!identity.session))return;refreshing.value=true;if(!silent)loading.value=true;
+let catalogLoadedAt=0,loadedUserId='',refreshAgain=false,refreshVisibleAgain=false;
+async function load(silent=false,visibleOnly=false){
+  if(refreshing.value){if(!visibleOnly)refreshAgain=true;else refreshVisibleAgain=true;return;}
+  if(httpMode&&silent&&!identity.session)return;
+  refreshing.value=true;if(!silent)loading.value=true;let requestToken:string|undefined;
   try{
     if(!identity.session){if(httpMode){if(!await identity.restore())return;}else await identity.login('user');}
-    const [g,p,o,s,w,a,goods,owned]=await Promise.all([api.games(),api.players(),api.orders(),api.settings(),api.wallet(),api.applications(),api.products(),api.products('mine')]);
-    games.value=g;players.value=p;const current=p.find(v=>v.userId===identity.session?.userId);
-    const h=(!httpMode&&!acceptanceMode)||(current&&current.qualifications.some(type=>qualifiedGames(current,type).length))?await api.orders({scope:'hall'}):[];
-    if(selectedPlayer.value)selectedPlayer.value=p.find(v=>v.id===selectedPlayer.value?.id)||selectedPlayer.value;
-    orders.value=o;settings.value=s;hall.value=h;settlements.value=w.settlements;applications.value=a;products.value=goods;myProducts.value=owned;
-    if(selectedOrder.value)selectedOrder.value=o.find(v=>v.id===selectedOrder.value?.id)||h.find(v=>v.id===selectedOrder.value?.id)||selectedOrder.value;error.value='';
+    const userId=identity.session!.userId,token=identity.session!.token;requestToken=token;
+    if(loadedUserId!==userId){orders.value=[];hall.value=[];settlements.value=[];applications.value=[];myProducts.value=[];selectedOrder.value=null;loadedUserId=userId;}
+    const resources=mobileRefreshResources(tab.value,sheet.value,canReceiveOrders.value,!visibleOnly);
+    const updates:Promise<()=>void>[]=[];
+    const request=<T,>(promise:Promise<T>,apply:(value:T)=>void)=>updates.push(promise.then(value=>()=>apply(value)));
+    const refreshCatalog=!catalogLoadedAt||!silent||Date.now()-catalogLoadedAt>=CATALOG_TTL_MS;
+    if(refreshCatalog){request(api.games(),value=>games.value=value);request(api.settings(),value=>settings.value=value);}
+    if(resources.includes('players'))request(api.players(),value=>players.value=value);
+    if(resources.includes('orders'))request(api.orders(),value=>orders.value=value);
+    if(resources.includes('wallet'))request(api.wallet(),value=>settlements.value=value.settlements);
+    if(resources.includes('applications'))request(api.applications(),value=>applications.value=value);
+    if(resources.includes('products'))request(api.products(),value=>products.value=value);
+    if(resources.includes('myProducts'))request(api.products('mine'),value=>myProducts.value=value);
+    const apply=await Promise.all(updates);
+    if(identity.session?.token!==token)return;
+    apply.forEach(update=>update());if(refreshCatalog)catalogLoadedAt=Date.now();
+    if(canReceiveOrders.value&&(!visibleOnly||tab.value==='hall')){
+      const available=await api.orders({scope:'hall'});
+      if(identity.session?.token!==token)return;hall.value=available;
+    }else if(!canReceiveOrders.value)hall.value=[];
+    if(selectedPlayer.value)selectedPlayer.value=players.value.find(p=>p.id===selectedPlayer.value?.id)||selectedPlayer.value;
+    if(selectedOrder.value)selectedOrder.value=orders.value.find(o=>o.id===selectedOrder.value?.id)||hall.value.find(o=>o.id===selectedOrder.value?.id)||selectedOrder.value;
+    error.value='';
   }catch(e){
-    if(e instanceof ApiError&&e.code===401){if(httpMode){identity.clear();sheet.value=null;return;}await identity.login('user');refreshing.value=false;await load(silent);return;}
+    if(requestToken&&identity.session?.token!==requestToken)return;
+    if(e instanceof ApiError&&e.code===401){if(httpMode){identity.clear();sheet.value=null;return;}await identity.login('user');refreshAgain=true;return;}
     error.value=e instanceof Error?e.message:'加载失败';
-  }finally{loading.value=false;refreshing.value=false;}
+  }finally{loading.value=false;refreshing.value=false;if(refreshAgain||refreshVisibleAgain){const visible=!refreshAgain;refreshAgain=false;refreshVisibleAgain=false;void load(true,visible);}}
 }
 const refundFrozen=(o:Order)=>['pending','processing'].includes(o.refundStatus);
 async function logout(){await run(async()=>{await identity.logout();sheet.value=null;orders.value=[];hall.value=[];products.value=[];tab.value='home';});}
@@ -128,13 +149,15 @@ function navigate(next:string){tab.value=next==='hall'&&!canReceiveOrders.value?
 function openOrders(status='all'){navigate('orders');statusFilter.value=status;}
 const tabs=[{id:'home',label:'发现',icon:'home'},{id:'hall',label:'接单',icon:'flag'},{id:'orders',label:'订单',icon:'list'},{id:'me',label:'我的',icon:'person'}];
 const visibleTabs=computed(()=>tabs.filter(item=>item.id!=='hall'||canReceiveOrders.value));
-let mounted=false;
-function stopTimers(){clearInterval(interval);clearInterval(ticker);}
-function startTimers(){stopTimers();interval=setInterval(()=>load(true),10000);ticker=setInterval(()=>now.value=Date.now(),1000);}
+let mounted=false,appVisible=true;
+function stopTimers(){clearTimeout(interval);clearInterval(ticker);}
+function scheduleRefresh(){clearTimeout(interval);if(!appVisible)return;const view=['order','pay','refund','finish','assistants'].includes(sheet.value||'')?'orders':tab.value;interval=setTimeout(async()=>{try{await load(true,true);}finally{scheduleRefresh();}},refreshDelay('mobile',view));}
+function startTimers(){stopTimers();scheduleRefresh();ticker=setInterval(()=>now.value=Date.now(),1000);}
+watch([tab,sheet],()=>{if(mounted&&appVisible&&!loading.value){void load(true,true);scheduleRefresh();}});
 onMounted(async()=>{mounted=true;await load();});
-onShow(()=>{platformLayout.value=getPlatformLayout();now.value=Date.now();if(mounted)void load(true);startTimers();});
-onHide(stopTimers);
-onUnmounted(()=>{stopTimers();clearTimeout(toastTimer);});
+onShow(()=>{appVisible=true;platformLayout.value=getPlatformLayout();now.value=Date.now();if(mounted)void load(true,true);startTimers();});
+onHide(()=>{appVisible=false;stopTimers();});
+onUnmounted(()=>{appVisible=false;stopTimers();clearTimeout(toastTimer);});
 onResize(()=>{platformLayout.value=getPlatformLayout();});
 onShareAppMessage(()=>({title:(settings.value?.name||CLUB_NAME)+' · 好游戏，一起出发',path:'/pages/index/index'}));
 </script>

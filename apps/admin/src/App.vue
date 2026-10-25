@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowRight, Bell, Search, Refresh, Download, TrendCharts, Fold, Expand, Grid, Tickets, User, UserFilled, Service, Document, TopRight, Check, Close, CircleCheck, Clock, Switch, CreditCard, Select } from '@element-plus/icons-vue';
 import { api, useStaff, httpMode, acceptanceMode } from './store';
 import StaffLogin from './components/StaffLogin.vue';
-import { CLUB_NAME, CLUB_NAME_EN, ApiError, canServe, serviceLabels, orderSummary, orderMembers, participantEarnings, money, compactMoney, statusLabels, roleLabels, time, type Application, type Order, type Player, type Game, type Dashboard, type Audit, type ClubSettings, type ClubUser, type Role } from '@stellar/core';
+import { CLUB_NAME, CLUB_NAME_EN, ApiError, CATALOG_TTL_MS, adminRefreshResources, refreshDelay, canServe, serviceLabels, orderSummary, orderMembers, participantEarnings, money, compactMoney, statusLabels, roleLabels, time, type Application, type Order, type Player, type Game, type Dashboard, type Audit, type ClubSettings, type ClubUser, type Role } from '@stellar/core';
 const staff=useStaff();
 watch(()=>staff.session?.userId,(id,previous)=>{if(httpMode&&id&&id!==previous)void load();});
 const nav=[{id:'dashboard',label:'概览看板',icon:Grid},{id:'orders',label:'订单工作台',icon:Tickets},{id:'players',label:'成员管理',icon:UserFilled},{id:'customers',label:'客户管理',icon:User},{id:'refunds',label:'退款售后',icon:Service},{id:'audit',label:'操作日志',icon:Document}];
@@ -26,7 +26,7 @@ function toggleSidebar(){if(isCompactViewport.value)mobileSidebarOpen.value=!mob
 function onSidebarViewportChange(event:MediaQueryListEvent){isCompactViewport.value=event.matches;mobileSidebarOpen.value=false;}
 function onSidebarKeydown(event:KeyboardEvent){if(event.key==='Escape'&&mobileSidebarOpen.value){mobileSidebarOpen.value=false;document.querySelector<HTMLButtonElement>('.sidebar-toggle')?.focus();}}
 const orderDrawer=ref(false),selectedOrder=ref<Order|null>(null),assignDialog=ref(false),assignPlayer=ref(''),assignReason=ref(''),refundDialog=ref(false),reviewApprove=ref(true),reviewNote=ref(''),playerDialog=ref(false),selectedPlayer=ref<Player|null>(null),editPrice=ref(0),roleDialog=ref(false),customerDrawer=ref(false),customerId=ref('');
-let refreshTimer:ReturnType<typeof setInterval>;
+let refreshTimer:ReturnType<typeof setTimeout>;
 const isAdmin=computed(()=>staff.session?.role==='admin');
 const canFinance=computed(()=>['admin','finance'].includes(staff.session?.role||''));
 const canDispatch=computed(()=>['admin','customer_service'].includes(staff.session?.role||''));
@@ -64,7 +64,33 @@ const ringStyle=computed(()=>{let start=0;const stops=dashboard.value?.gameDistr
 watch([query,gameFilter,statusFilter,serviceFilter],()=>currentPage.value=1);
 function navigate(id:string){mobileSidebarOpen.value=false;page.value=id;location.hash=id;query.value='';gameFilter.value='all';statusFilter.value='all';serviceFilter.value='all';customerFilter.value='all';currentPage.value=1;}
 function onHash(){const raw=location.hash.slice(1)||'dashboard',id=legacyPages[raw]||raw;if(availableNav.value.some(n=>n.id===id)){if(id!==raw)navigate(id);else page.value=id;}else navigate('dashboard');}
-async function load(silent=false){if(refreshing.value)return;refreshing.value=true;if(!silent)loading.value=true;try{if(!staff.session){if(httpMode){if(silent||!await staff.restore())return;}else await staff.login('admin');}const [o,p,g,d,s,u,a]=await Promise.all([api.orders({scope:'all'}),api.players(),api.games(),api.dashboard(),api.settings(),api.users(),api.applications()]);orders.value=o;players.value=p;games.value=g;dashboard.value=d;settings.value=s;registeredUsers.value=u;applications.value=a;audit.value=isAdmin.value?await api.audit():[];if(selectedOrder.value)selectedOrder.value=orders.value.find(o=>o.id===selectedOrder.value?.id)||selectedOrder.value;loadError.value='';}catch(e){if(e instanceof ApiError&&e.code===401){if(httpMode){staff.clear();roleDialog.value=false;return;}await staff.login(staff.session?.role||'admin');refreshing.value=false;await load(silent);return;}loadError.value=e instanceof Error?e.message:'数据加载失败';}finally{loading.value=false;refreshing.value=false;}}
+let catalogLoadedAt=0,refreshAgain=false,refreshVisibleAgain=false,adminMounted=false;
+async function load(silent=false,visibleOnly=false){
+  if(refreshing.value){if(!visibleOnly)refreshAgain=true;else refreshVisibleAgain=true;return;}
+  refreshing.value=true;if(!silent)loading.value=true;let requestToken:string|undefined;
+  try{
+    if(!staff.session){if(httpMode){if(silent||!await staff.restore())return;}else await staff.login('admin');}
+    const token=staff.session!.token,resources=adminRefreshResources(page.value,isAdmin.value,!visibleOnly);requestToken=token;
+    if(orderDrawer.value||progressDrawer.value){if(!resources.includes('orders'))resources.push('orders');if(progressDrawer.value){if(!resources.includes('applications'))resources.push('applications');if(!resources.includes('users'))resources.push('users');}}
+    const updates:Promise<()=>void>[]=[];
+    const request=<T,>(promise:Promise<T>,apply:(value:T)=>void)=>updates.push(promise.then(value=>()=>apply(value)));
+    const refreshCatalog=!catalogLoadedAt||!silent||Date.now()-catalogLoadedAt>=CATALOG_TTL_MS;
+    if(refreshCatalog){request(api.games(),value=>games.value=value);request(api.settings(),value=>settings.value=value);}
+    if(resources.includes('orders'))request(api.orders({scope:'all'}),value=>orders.value=value);
+    if(resources.includes('players'))request(api.players(),value=>players.value=value);
+    if(resources.includes('dashboard'))request(api.dashboard(),value=>dashboard.value=value);
+    if(resources.includes('users'))request(api.users(),value=>registeredUsers.value=value);
+    if(resources.includes('applications'))request(api.applications(),value=>applications.value=value);
+    if(resources.includes('audit'))request(api.audit(),value=>audit.value=value);
+    const apply=await Promise.all(updates);if(staff.session?.token!==token)return;
+    apply.forEach(update=>update());if(refreshCatalog)catalogLoadedAt=Date.now();if(!isAdmin.value)audit.value=[];
+    if(selectedOrder.value)selectedOrder.value=orders.value.find(o=>o.id===selectedOrder.value?.id)||selectedOrder.value;loadError.value='';
+  }catch(e){if(requestToken&&staff.session?.token!==requestToken)return;if(e instanceof ApiError&&e.code===401){if(httpMode){staff.clear();roleDialog.value=false;return;}await staff.login(staff.session?.role||'admin');refreshAgain=true;return;}loadError.value=e instanceof Error?e.message:'数据加载失败';}
+  finally{loading.value=false;refreshing.value=false;if(refreshAgain||refreshVisibleAgain){const visible=!refreshAgain;refreshAgain=false;refreshVisibleAgain=false;void load(true,visible);}}
+}
+function scheduleRefresh(){clearTimeout(refreshTimer);if(document.hidden||!adminMounted)return;refreshTimer=setTimeout(async()=>{try{await load(true,true);}finally{scheduleRefresh();}},refreshDelay('admin',page.value));}
+function onVisibilityChange(){if(document.hidden)clearTimeout(refreshTimer);else{void load(true,true);scheduleRefresh();}}
+watch(page,()=>{if(adminMounted){void load(true,true);scheduleRefresh();}});
 async function run(job:()=>Promise<void>){if(busy.value)return;busy.value=true;try{await job();}catch(e){if(e!=='cancel'&&e!=='close')ElMessage.error(e instanceof Error?e.message:'操作失败');}finally{busy.value=false;}}
 function openOrder(o:Order){selectedOrder.value=o;orderDrawer.value=true;}
 function openAssign(o:Order){selectedOrder.value=o;assignPlayer.value='';assignReason.value='';assignDialog.value=true;}
@@ -87,9 +113,9 @@ function exportCsv(){
 }
 function openMobile(){window.open(`${import.meta.env.BASE_URL}../mobile/#/pages/index/index`,'_blank');}
 function doSearch(){navigate('orders');query.value=globalSearch.value;globalSearch.value='';}
-onMounted(async()=>{sidebarViewport.addEventListener('change',onSidebarViewportChange);window.addEventListener('keydown',onSidebarKeydown);await load();if(!availableNav.value.some(n=>n.id===page.value))navigate('dashboard');if(location.hash.slice(1)!==page.value)navigate(page.value);refreshTimer=setInterval(()=>load(true),12000);window.addEventListener('hashchange',onHash);window.addEventListener('storage',onStorage);});
+onMounted(async()=>{sidebarViewport.addEventListener('change',onSidebarViewportChange);window.addEventListener('keydown',onSidebarKeydown);await load();if(!availableNav.value.some(n=>n.id===page.value))navigate('dashboard');if(location.hash.slice(1)!==page.value)navigate(page.value);adminMounted=true;scheduleRefresh();document.addEventListener('visibilitychange',onVisibilityChange);window.addEventListener('hashchange',onHash);window.addEventListener('storage',onStorage);});
 function onStorage(e:StorageEvent){if(e.key==='stellar-club:database:v1')load(true);}
-onUnmounted(()=>{sidebarViewport.removeEventListener('change',onSidebarViewportChange);window.removeEventListener('keydown',onSidebarKeydown);clearInterval(refreshTimer);window.removeEventListener('hashchange',onHash);window.removeEventListener('storage',onStorage);});
+onUnmounted(()=>{sidebarViewport.removeEventListener('change',onSidebarViewportChange);window.removeEventListener('keydown',onSidebarKeydown);adminMounted=false;clearTimeout(refreshTimer);document.removeEventListener('visibilitychange',onVisibilityChange);window.removeEventListener('hashchange',onHash);window.removeEventListener('storage',onStorage);});
 </script>
 
 <template>

@@ -2,6 +2,10 @@
 set -euo pipefail
 umask 077
 [[ ${EUID} -eq 0 ]] || { echo 'Run this installer with sudo.' >&2; exit 1; }
+if [[ -f /etc/systemd/system/norman-acceptance.service.d/20-rds.conf ]]; then
+  echo 'RDS cutover is installed. Use deploy/rds/update.sh; the local-DB installer will not recreate MySQL.' >&2
+  exit 1
+fi
 bundle=${1:?Specify the uploaded acceptance archive}
 release=${2:?Specify the release identifier}
 [[ $release =~ ^[A-Za-z0-9_-]{7,64}$ ]] || exit 1

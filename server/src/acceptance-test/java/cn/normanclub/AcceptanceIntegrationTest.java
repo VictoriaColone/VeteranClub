@@ -51,6 +51,18 @@ class AcceptanceIntegrationTest {
         var external=new org.springframework.mock.web.MockHttpServletRequest();external.setRemoteAddr("203.0.113.10");external.addHeader("X-Client-Type","h5");external.addHeader("Origin",origins.getFirst());
         assertThrows(cn.normanclub.common.ApiException.class,()->guard.check(external));
     }
+    @Test void rdsRequiresExactHostDedicatedDatabaseAndVerifiedTls(){
+        String host="rm-example.mysql.rds.aliyuncs.com",url="jdbc:mysql://"+host+":3306/norman_acceptance?sslMode=VERIFY_IDENTITY";
+        var origins=List.of("http://127.0.0.1:4190");
+        assertDoesNotThrow(()->AcceptanceGuard.validate(true,"true","127.0.0.1",url,origins,host));
+        assertThrows(IllegalStateException.class,()->AcceptanceGuard.validate(true,"true","127.0.0.1",url,origins));
+        for(String invalid:List.of(url.replace(host,"rm-other.mysql.rds.aliyuncs.com"),url.replace("norman_acceptance","norman_club"),
+            url.replace("VERIFY_IDENTITY","REQUIRED"),url.replace(":3306/",":3307/"),url+"&SSLMODE=DISABLED",
+            url+"&socketFactory=custom.Factory",url+"&useSSL=false",url+"&trustCertificateKeyStoreUrl=file:/tmp/other.jks"))
+            assertThrows(IllegalStateException.class,()->AcceptanceGuard.validate(true,"true","127.0.0.1",invalid,origins,host),invalid);
+        assertThrows(IllegalStateException.class,()->AcceptanceGuard.validate(true,"true","0.0.0.0",url,origins,host));
+        assertThrows(IllegalStateException.class,()->AcceptanceGuard.validate(true,"true","127.0.0.1",url,List.of("https://public.example.com"),host));
+    }
     @Test void demoIdentityHasDatabaseQualificationsAndNormalApiStillNeedsSession()throws Exception{
         assertEquals(401,request("GET","/v1/orders",null,"user").statusCode());assertEquals("u-boss",login("user","u-boss").path("userId").asText());
         assertEquals(200,request("GET","/v1/products",null,"user").statusCode());assertEquals(403,request("GET","/v1/admin/users",null,"user").statusCode());

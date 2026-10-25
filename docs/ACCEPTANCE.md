@@ -24,6 +24,8 @@ npm run build:acceptance
 
 ## 服务器结构
 
+已有环境迁出本地 MySQL、改接阿里云 RDS 的步骤见 [RDS 迁移](RDS.md)。完成迁移后使用 RDS 连接配置及更新脚本，以下本地数据库安装方式仅用于迁移前或新建的本地库验收环境。
+
 部署脚本在 `deploy/acceptance/install.sh`，Ubuntu 24.04 需先安装 Java 21、Docker 与 Nginx。数据库默认采用 Docker 官方镜像的 [Amazon ECR Public 分发源](https://www.docker.com/press-release/docker-official-images-available-amazon-elastic-container-registry/) `public.ecr.aws/docker/library/mysql:8.4`；也支持通过 `MYSQL_ACCEPTANCE_IMAGE` 指定 [MySQL 官方 Oracle 镜像](https://dev.mysql.com/doc/refman/8.4/en/docker-mysql-getting-started.html) `container-registry.oracle.com/mysql/community-server:8.4`。先拉取镜像再安装。只将 `127.0.0.1:3308` 映射到容器，API 监听 `127.0.0.1:8091`，Nginx 监听 `127.0.0.1:8088`。
 
 上传验收 JAR、前端目录与 `deploy/acceptance/` 文件组成的归档包，以及安装脚本。校验 SHA-256 后运行：

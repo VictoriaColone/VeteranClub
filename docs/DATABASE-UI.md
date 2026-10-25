@@ -1,5 +1,7 @@
 # 数据库可视化管理
 
+以下 Adminer 方式适用于原本地 MySQL。迁移到阿里云 RDS 后，可在 RDS 控制台选择“登录数据库”，通过阿里云 DMS 浏览表和执行查询；应用仍使用普通账号。迁移和原组件退役步骤见 [RDS 迁移](RDS.md)。
+
 现有云服务器上的 MySQL 可以通过免费的 [Adminer](https://www.adminer.org/) 网页管理，无须购买 RDS。当前采用 Adminer 6.2.0 的官方 MySQL 多语言版本，保留数据库密码登录。
 
 ## 打开与登录
