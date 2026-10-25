@@ -11,3 +11,12 @@ apps/mobile/src/components/vendor-ui/
 apps/mobile/src/project.config.json
 apps/mobile/project.private.config.json
 apps/mobile/.env.*.local
+server/target/
+.local/
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx

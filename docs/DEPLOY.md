@@ -1,4 +1,8 @@
-# 单机静态部署
+# 部署说明
+
+真实服务端、数据库与 HTTPS 容器部署使用 [服务端说明](SERVER.md) 和 `deploy/compose.yml`；以下是原浏览器 Mock Demo 的纯静态托管方式，不能用于真实登录与交易。
+
+## 静态 Demo
 
 运行 `npm ci && npm run build` 后，将整个 `dist/` 目录复制至服务器 `/var/www/stellar-club/`。现阶段只有静态前端和浏览器模拟服务，无需购买数据库或部署 Java 应用。
 

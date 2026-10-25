@@ -1,5 +1,7 @@
 {
-  "name": "stellar-club", "version": "1.0.0", "private": true,
+  "name": "stellar-club",
+  "version": "1.0.0",
+  "private": true,
   "description": "诺曼部落：uni-app H5 与微信小程序 / Vue 3 运营后台 / 可替换 Mock API",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -11,9 +13,26 @@
     "test": "tsx --test tests/*.test.ts",
     "dev:mp-weixin": "npm run dev:mp-weixin --workspace @stellar/mobile",
     "build:mp-weixin": "npm run build:mp-weixin --workspace @stellar/mobile && node scripts/check-weixin.mjs",
-    "build:all": "npm run build && npm run build:mp-weixin"
+    "build:all": "npm run build && npm run build:mp-weixin",
+    "server:dev": "node scripts/backend.mjs run",
+    "server:test": "node scripts/backend.mjs test",
+    "server:build": "node scripts/backend.mjs package",
+    "server:bootstrap": "node scripts/backend.mjs bootstrap-admin",
+    "server:reset-staff": "node scripts/backend.mjs reset-staff",
+    "build:http": "VITE_API_MODE=http VITE_API_BASE_URL=/api SITE_OUTPUT_DIR=dist-http npm run build",
+    "preview:http": "SITE_OUTPUT_DIR=dist-http HTTP_API_UPSTREAM=http://127.0.0.1:8080 PORT=4180 npm run preview",
+    "server:start": "node scripts/backend.mjs start"
   },
-  "workspaces": ["apps/*", "packages/*"],
-  "devDependencies": {"typescript": "~5.7.3", "vue-tsc": "^2.2.0", "tsx": "^4.19.2"},
-  "engines": {"node": ">=20"}
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "~5.7.3",
+    "vue-tsc": "^2.2.0",
+    "tsx": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

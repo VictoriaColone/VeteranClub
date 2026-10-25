@@ -1,9 +1,24 @@
 import { createMockTransport, ApiError } from './mock';
-import type { ClubUser, Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
+import type { StaffChallenge, PaymentAttempt, ClubUser, Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
 export class ClubApi {
   constructor(private transport:Transport=createMockTransport(),public session:Session|null=null){}
-  private request<T>(method:string,path:string,body?:unknown){return this.transport<T>(method,path,body,this.session?.token);}
+  private pendingRequests=new Map<string,string>();
+  private request<T>(method:string,path:string,body?:unknown,idempotencyKey?:string){return this.transport<T>(method,path,body,this.session?.token,idempotencyKey);}
+  private async createIdempotent<T>(path:string,body:object):Promise<T>{
+    const fingerprint=path+':'+JSON.stringify(body,Object.keys(body).sort());
+    const key=this.pendingRequests.get(fingerprint)||requestKey();this.pendingRequests.set(fingerprint,key);
+    try{const data=await this.request<T>('POST',path,body,key);this.pendingRequests.delete(fingerprint);return data;}
+    catch(error){if(error instanceof ApiError&&error.code<500)this.pendingRequests.delete(fingerprint);throw error;}
+  }
   async login(role:Role,accountId?:string){const s=await this.request<Session>('POST','/v1/auth/mock-login',{role,accountId});this.session=s;return s;}
+  currentSession(){return this.request<Session>('GET','/v1/auth/session');}
+  sendSms(phone:string){return this.request<{expiresIn:number;retryAfter:number;delivery:string}>('POST','/v1/auth/sms/send',{phone});}
+  async smsLogin(phone:string,code:string){const session=await this.request<Session>('POST','/v1/auth/sms/login',{phone,code});this.session=session;return session;}
+  staffLogin(username:string,password:string){return this.request<StaffChallenge>('POST','/v1/auth/staff/login',{username,password});}
+  async verifyStaff(challengeToken:string,code:string){const session=await this.request<Session>('POST','/v1/auth/staff/verify',{challengeToken,code});this.session=session;return session;}
+  paymentChannels(){return this.request<{channel:string;enabled:boolean;message:string}[]>('GET','/v1/payments/channels');}
+  createPayment(orderId:string,channel:string){return this.createIdempotent<PaymentAttempt>(`/v1/orders/${orderId}/payment-attempts`,{channel});}
+  payment(id:string){return this.request<PaymentAttempt>('GET',`/v1/payments/${id}`);}
   async logout(){await this.request('POST','/v1/auth/logout');this.session=null;}
   games(){return this.request<Game[]>('GET','/v1/catalog/games');}
   settings(){return this.request<ClubSettings>('GET','/v1/club');}
@@ -11,7 +26,7 @@ export class ClubApi {
   users(){return this.request<ClubUser[]>('GET','/v1/admin/users');}
   orders(filters:OrderFilters={}){const qs=Object.entries(filters).filter(([,v])=>v).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v!)}`).join('&');return this.request<Order[]>('GET',`/v1/orders?${qs}`);}
   order(id:string){return this.request<Order>('GET',`/v1/orders/${id}`);}
-  createOrder(input:OrderInput){return this.request<Order>('POST','/v1/orders',input);}
+  createOrder(input:OrderInput){return this.createIdempotent<Order>('/v1/orders',input);}
   act(id:string,action:string,body?:unknown){return this.request<Order>('POST',`/v1/orders/${id}/${action}`,body);}
   products(scope:'public'|'mine'='public'){return this.request<Product[]>('GET',`/v1/products?scope=${scope}`);}
   publishProduct(input:ProductInput){return this.request<Product>('POST','/v1/products',input);}
@@ -28,6 +43,17 @@ export class ClubApi {
   audit(){return this.request<Audit[]>('GET','/v1/admin/audit');}
   reset(){return this.request('POST','/v1/demo/reset');}
 }
-export function createHttpTransport(baseUrl:string):Transport {
-  return async<T>(method:string,path:string,body?:unknown,token?:string):Promise<T>=>{const response=await fetch(baseUrl.replace(/\/$/,'')+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});const json=await response.json();if(!response.ok||json.code!==0)throw new ApiError(json.code||response.status,json.message||'请求失败');return json.data as T;};
+export function csrfToken(audience:'user'|'staff'){
+  if(typeof document==='undefined')return '';
+  const name=`norman-${audience}-csrf=`;return document.cookie.split(';').map(value=>value.trim()).find(value=>value.startsWith(name))?.slice(name.length)||'';
+}
+export function requestKey(){return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;}
+export function createHttpTransport(baseUrl:string,audience:'user'|'staff'='user'):Transport {
+  return async<T>(method:string,path:string,body?:unknown,token?:string,idempotencyKey?:string):Promise<T>=>{
+    const csrf=csrfToken(audience);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
+    try{
+      const response=await fetch(baseUrl.replace(/\/$/,'')+path,{method,credentials:'include',signal:controller.signal,headers:{'Content-Type':'application/json','X-Session-Audience':audience,'X-Client-Type':'h5',...(csrf?{'X-CSRF-Token':csrf}:{}),...(token?{Authorization:`Bearer ${token}`}:{}) ,...(method==='POST'&&(path==='/v1/orders'||path.endsWith('/payment-attempts'))?{'Idempotency-Key':idempotencyKey||requestKey()}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+      const result=await response.json();if(!response.ok||result.code!==0)throw new ApiError(result.code||response.status,result.message||'请求失败');return result.data as T;
+    }catch(error){if(error instanceof ApiError)throw error;throw new ApiError(503,'网络连接失败，请稍后重试');}finally{clearTimeout(timer);}
+  };
 }

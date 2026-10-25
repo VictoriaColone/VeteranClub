@@ -1,10 +1,16 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { ClubApi, createHttpTransport, type Session, type Role } from '@stellar/core';
-export const api=new ClubApi(import.meta.env.VITE_API_MODE==='http'?createHttpTransport(import.meta.env.VITE_API_BASE_URL||''):undefined);
+import { ApiError, ClubApi, createHttpTransport, type Session, type Role } from '@stellar/core';
+export const httpMode=import.meta.env.VITE_API_MODE==='http';
+export const api=new ClubApi(httpMode?createHttpTransport(import.meta.env.VITE_API_BASE_URL||'/api','staff'):undefined);
 export const useStaff=defineStore('staff',()=>{
-  let saved:Session|null=null;try{saved=JSON.parse(localStorage.getItem('stellar-admin-session')||'null');}catch{}
+  let saved:Session|null=null;if(!httpMode)try{saved=JSON.parse(localStorage.getItem('stellar-admin-session')||'null');}catch{}
   const session=ref<Session|null>(saved);api.session=saved;
-  async function login(role:Role){session.value=await api.login(role);localStorage.setItem('stellar-admin-session',JSON.stringify(session.value));}
-  return {session,login};
+  function save(value:Session|null){session.value=value;api.session=value;if(!httpMode)localStorage.setItem('stellar-admin-session',JSON.stringify(value));}
+  async function login(role:Role){if(httpMode)throw new Error('请使用员工账号登录');save(await api.login(role));}
+  async function restore(){if(!httpMode)return session.value;try{save(await api.currentSession());return session.value;}catch(error){if(error instanceof ApiError&&error.code===401){save(null);return null;}throw error;}}
+  async function verify(challengeToken:string,code:string){save(await api.verifyStaff(challengeToken,code));}
+  async function logout(){try{await api.logout();}catch(error){if(!(error instanceof ApiError&&error.code===401))throw error;}save(null);}
+  function clear(){save(null);}
+  return {session,login,restore,verify,logout,clear};
 });

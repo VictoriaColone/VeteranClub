@@ -34,3 +34,12 @@ test('下单用户或尚未接受邀请的用户无个人报酬卡，不匹配�
   const income=orderIncome(order,'lead',[unrelated])!;
   assert.equal(income.label,'自动结算处理中');assert.equal(income.settlement,undefined);
 });
+
+test('真实服务已记账与实际到账分开显示，渠道退款处理中继续冻结报酬',()=>{
+  const base=createMockServer(new MemoryStorage()).read().orders[0];
+  const order:Order={...base,status:'completed',team:[{playerId:'lead',name:'负责人',settlementId:'INC-1'}]};
+  const entry:Settlement={id:'INC-1',playerId:'lead',playerName:'负责人',orderIds:[order.id],amount:order.earnings,status:'credited',createdAt:1};
+  const income=orderIncome(order,'lead',[entry])!;
+  assert.equal(income.status,'credited');assert.equal(income.label,'已记账 · 待渠道转账');assert.equal(income.settlement?.paidAt,undefined);
+  assert.equal(orderIncome({...order,refundStatus:'processing'},'lead',[entry])?.label,'售后处理中 · 暂缓结算');
+});

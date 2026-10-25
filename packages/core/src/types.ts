@@ -7,14 +7,16 @@ export interface Application { id:string; userId:string; playerId:string; name:s
 export interface TeamMember { playerId:string; name:string; settlementId?:string }
 export type Role = 'user' | 'boss' | 'player' | 'admin' | 'customer_service' | 'finance';
 export type OrderStatus = 'unpaid' | 'waiting' | 'accepted' | 'serving' | 'confirming' | 'completed' | 'cancelled';
-export type RefundStatus = 'none' | 'pending' | 'refunded' | 'rejected';
-export interface Session { token: string; role: Role; userId: string; name: string; playerId?: string }
+export type RefundStatus = 'none' | 'pending' | 'processing' | 'refunded' | 'rejected';
+export interface Session { token: string; role: Role; userId: string; name: string; playerId?: string; expiresAt?:number }
+export interface StaffChallenge { step:'totp'|'enroll'; challengeToken:string; expiresIn:number; secret?:string; otpauthUri?:string }
+export interface PaymentAttempt { id:string; orderId:string; channel:string; amount:number; currency:string; status:string; clientParams?:Record<string,unknown> }
 export interface Game { id: string; name: string; short: string; color: string; tagline: string; regions: string[] }
 export interface Player { id: string; userId: string; name: string; subtitle: string; gameIds: string[]; tags: string[]; rating: number; completed: number; price: number; color: string; avatar: string; available: boolean; busy?:boolean; approved: boolean; qualifications: ServiceType[]; qualificationGames?: Partial<Record<ServiceType,string[]>>; bio: string }
 export interface ClubUser { id:string; name:string; playerId?:string }
 export interface TimelineEvent { at: number; label: string; actor: string; note?: string }
-export interface Order { productId?:string; productTitle?:string; serviceType:ServiceType; task:string; team:TeamMember[]; startedAt?:number; demoElapsedMs?:number; taskCompleted?:boolean; id: string; bossId: string; bossName: string; gameId: string; gameName: string; region: string; playerId?: string; playerName?: string; preferredPlayerId?: string; preferredPlayerName?: string; unitPrice: number; quantity: number; amount: number; commissionBps: number; earnings: number; status: OrderStatus; refundStatus: RefundStatus; refundReason?: string; refundAmount?: number; refundReviewNote?: string; note: string; createdAt: number; paidAt?: number; finishedAt?: number; paymentId?: string; settlementId?: string; timeline: TimelineEvent[] }
-export interface Settlement { id: string; playerId: string; playerName: string; orderIds: string[]; amount: number; status: 'pending' | 'paid'; createdAt: number; paidAt?: number }
+export interface Order { productId?:string; productTitle?:string; serviceType:ServiceType; task:string; team:TeamMember[]; startedAt?:number; demoElapsedMs?:number; taskCompleted?:boolean; id: string; bossId: string; bossName: string; gameId: string; gameName: string; region: string; playerId?: string; playerName?: string; preferredPlayerId?: string; preferredPlayerName?: string; unitPrice: number; quantity: number; amount: number; commissionBps: number; earnings: number; status: OrderStatus; refundStatus: RefundStatus; refundReason?: string; refundAmount?: number; refundReviewNote?: string; note: string; createdAt: number; paidAt?: number; finishedAt?: number; paymentId?: string; settlementId?: string; settlementStatus?:'credited'|'paid'; timeline: TimelineEvent[] }
+export interface Settlement { id: string; playerId: string; playerName: string; orderIds: string[]; amount: number; status: 'pending' | 'credited' | 'paid'; createdAt: number; paidAt?: number }
 export interface Audit { id: string; at: number; actor: string; action: string; target: string; detail: string }
 export interface ClubSettings { name: string; commissionBps: number; unpaidTimeoutMinutes: number; announcement: string }
 export interface Database { schema: number; products?:Product[]; catalogRevision?:number; applications:Application[]; revision: number; games: Game[]; players: Player[]; orders: Order[]; settlements: Settlement[]; audit: Audit[]; settings: ClubSettings; sessions: Session[]; sequence: number }
@@ -24,7 +26,7 @@ export interface Dashboard { todayRevenue: number; todayOrders: number; liveOrde
 export interface Wallet { total: number; pending: number; settled: number; available: number; orders: Order[]; settlements: Settlement[] }
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export interface ApiResponse<T> { code: number; message: string; data: T; requestId: string }
-export type Transport = <T>(method: string, path: string, body?: unknown, token?: string) => Promise<T>;
+export type Transport = <T>(method: string, path: string, body?: unknown, token?: string, idempotencyKey?:string) => Promise<T>;
 export const statusLabels: Record<OrderStatus, string> = {unpaid:'待付款',waiting:'待接单',accepted:'待开始',serving:'服务中',confirming:'待确认',completed:'已完成',cancelled:'已取消'};
 export const roleLabels: Record<Role,string> = {user:'用户',boss:'用户',player:'用户',admin:'管理员',customer_service:'客服',finance:'财务'};
 export const money = (cents: number) => (cents / 100).toFixed(2);
