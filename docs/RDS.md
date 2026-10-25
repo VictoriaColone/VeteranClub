@@ -48,3 +48,24 @@ sudo python3 /home/admin/rds/migrate.py migrate
 本地验证：`npm test`、`npm run check`、`npm run server:build:acceptance`、`npm run build:acceptance`、`npm run build:mp-weixin`，以及 `python3 -B -m unittest discover -s tests -p test_rds_migration.py`。
 
 迁移收尾需注意：`/run` 通常是 tmpfs，维护标记应复制归档后删除，不能跨文件系统 `rename`。systemd 依赖也不能靠 drop-in 中的空 `Requires=` 清除，因此迁移时安装独立的 RDS 主服务文件，失败时恢复原服务文件。
+
+## 修改应用账号密码
+
+高权限账号 `norman_app` 不供应用使用，持有人在 RDS 控制台重置即可。修改普通账号 `norman_service` 时，需要同步应用配置，避免网站继续使用旧密码：
+
+先在有 JDK 17 或更新版本的本机编译只读连接检查工具，将生成的 `RdsPasswordProbe.class` 和 `rotate-password.py` 一起打包上传至服务器 `/home/admin/rds/`：
+
+```bash
+javac --release 17 -d artifacts/rds-password-probe deploy/rds/RdsPasswordProbe.java
+```
+
+工具复用已部署应用中的 MySQL Connector/J 和 `VERIFY_IDENTITY` 连接配置，无需安装新的数据库服务或客户端。
+
+1. 在服务器运行 `sudo python3 /home/admin/rds/rotate-password.py stage`，由持有人本人隐藏输入并确认新的 `norman_service` 密码。暂存文件仅 root 可读，应用配置此时不变。
+2. 持有人在 RDS 控制台重置 **norman_service** 为同一密码；如页面显示“同时重置账号”选项，保持关闭，不重置账号权限。
+3. 确认控制台成功后立即运行 `sudo python3 /home/admin/rds/rotate-password.py check`。它只验证新密码是否能通过 TLS 连接目标业务库并读取订单数量，不停止网站、不修改数据。
+4. 检查通过后通过独立任务执行切换，避免 Workbench 断连导致维护过程被中断：`sudo systemd-run --unit=norman-rds-password-apply --property=Type=oneshot --property=UMask=0077 /usr/bin/python3 /home/admin/rds/rotate-password.py apply`。脚本再次验证新连接后才保留原配置备份、开启短暂维护、更新 `rds.env` 和 `api.env`、重启服务并等待数据库健康检查通过，再关闭维护。新密码连接失败时，不改配置、不停止应用。
+
+脚本只同步服务器配置，不调用数据库密码重置接口。密码不放入命令参数、聊天或 Git；如验证失败，保留维护状态和配置备份供排查，不自动恢复已经失效的旧密码。DMS 等客户端及本机保存的凭据也需更新。安全验证用 `python3 -B -m unittest discover -s tests -p test_rds_password.py`。
+
+若之前的前台任务因终端断开中断，先核查服务、配置和维护标记，再使用独立任务执行 `resume`（为每次任务选择新的单元名称）。`resume` 要求维护标记和匹配暂存摘要的原始配置备份存在，只接受原配置或预期的新密码配置；出现无关配置改动时会拒绝继续。任务结果可用 `systemctl status norman-rds-password-apply --no-pager` 和 `journalctl -u norman-rds-password-apply --no-pager` 查看，日志不会输出密码。
