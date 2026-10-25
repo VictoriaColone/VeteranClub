@@ -1,12 +1,18 @@
 import importlib.util
+import errno
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('rds_migrate', Path(__file__).parents[1] / 'deploy/rds/migrate.py')
 migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
+retire_spec = importlib.util.spec_from_file_location('rds_retire', Path(__file__).parents[1] / 'deploy/rds/retire-local.py')
+retirement = importlib.util.module_from_spec(retire_spec)
+with patch.dict(sys.modules, {'migrate': migration}):
+    retire_spec.loader.exec_module(retirement)
 
 
 class RdsMigrationTests(unittest.TestCase):
@@ -47,26 +53,72 @@ class RdsMigrationTests(unittest.TestCase):
             flag = root / 'maintenance'
             nginx = root / 'nginx.conf'; nginx.write_text(str(flag))
             dropin = root / 'service.d/20-rds.conf'
-            with patch.multiple(migration, CONFIG=config, BACKUPS=backups, FLAG=flag, NGINX=nginx, DROPIN=dropin), \
+            unit = root / 'norman.service'; unit.write_text('Requires=docker.service\n')
+            with patch.multiple(migration, CONFIG=config, BACKUPS=backups, FLAG=flag, NGINX=nginx, DROPIN=dropin, UNIT=unit), \
                  patch.object(migration, 'preflight', return_value={}), \
                  patch.object(migration, 'backup', return_value=root / 'dump.sql.gz'), \
                  patch.object(migration, 'manifest', return_value={'club_order': {'rows': 2, 'sha256': 'sample'}}), \
                  patch.object(migration, 'import_dump', side_effect=RuntimeError('synthetic import failure')), \
-                 patch.object(migration, 'health'), patch.object(migration, 'run') as commands:
+                 patch.object(migration, 'health'), patch.object(migration, 'run') as commands, \
+                 patch.object(Path, 'rename', side_effect=OSError(errno.EXDEV, 'Cross-device link')):
                 with self.assertRaises(RuntimeError):
                     migration.migrate()
                 self.assertEqual(api.read_text(), original)
                 self.assertFalse(flag.exists())
                 self.assertTrue(list(backups.glob('*/maintenance-finished')))
                 self.assertFalse(dropin.exists())
+                self.assertEqual(unit.read_text(), 'Requires=docker.service\n')
                 self.assertIn(unittest.mock.call(['systemctl', 'start', migration.SERVICE]), commands.call_args_list)
                 self.assertTrue(all(call.args[0][0] == 'systemctl' for call in commands.call_args_list))
+
+    def test_success_clears_maintenance_on_separate_run_filesystem(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / 'config'; config.mkdir()
+            (config / 'api.env').write_text('DB_URL=jdbc:mysql://127.0.0.1:3308/norman_acceptance?sslMode=REQUIRED\n')
+            backups = root / 'backups'; backups.mkdir()
+            flag = root / 'maintenance'
+            nginx = root / 'nginx.conf'; nginx.write_text(str(flag))
+            dropin = root / 'service.d/20-rds.conf'
+            unit = root / 'norman.service'; unit.write_text('Requires=docker.service\n')
+            values = {'RDS_HOST': 'rm-example.mysql.rds.aliyuncs.com', 'RDS_USERNAME': 'norman_service', 'RDS_PASSWORD': 'synthetic-test-only'}
+            with patch.multiple(migration, CONFIG=config, BACKUPS=backups, FLAG=flag, NGINX=nginx, DROPIN=dropin, UNIT=unit), \
+                 patch.object(migration, 'preflight', return_value=values), \
+                 patch.object(migration, 'backup', return_value=root / 'dump.sql.gz'), \
+                 patch.object(migration, 'manifest', return_value={'club_order': {'rows': 2, 'sha256': 'sample'}}), \
+                 patch.object(migration, 'import_dump'), patch.object(migration, 'health'), patch.object(migration, 'run'), \
+                 patch.object(Path, 'rename', side_effect=OSError(errno.EXDEV, 'Cross-device link')):
+                migration.migrate()
+                self.assertFalse(flag.exists())
+                self.assertTrue(list(backups.glob('*/SWITCHED')))
+                self.assertTrue(list(backups.glob('*/maintenance-finished')))
+                self.assertIn('VERIFY_IDENTITY', (config / 'api.env').read_text())
+                self.assertNotIn('docker.service', unit.read_text())
 
     def test_environment_values_preserve_special_characters_and_reject_newlines(self):
         self.assertEqual(migration.quote_environment('a"b\\c$#'), '"a\\"b\\\\c$#"')
         for value in ['a\nb', 'a\rb', 'a\x00b']:
             with self.assertRaises(ValueError):
                 migration.quote_environment(value)
+
+    def test_retirement_refuses_api_still_pointing_at_local_database(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary)
+            (config / 'api.env').write_text('DB_URL="jdbc:mysql://127.0.0.1:3308/norman_acceptance?sslMode=REQUIRED"\n')
+            with patch.object(retirement.os, 'geteuid', return_value=0), \
+                 patch.object(migration, 'credentials', return_value={'RDS_HOST': 'rm-example.mysql.rds.aliyuncs.com'}), \
+                 patch.object(migration, 'CONFIG', config), patch.object(retirement, 'run') as commands:
+                with self.assertRaisesRegex(ValueError, 'intended RDS endpoint'):
+                    retirement.guard()
+                commands.assert_not_called()
+
+    def test_retirement_does_not_remove_anything_when_preconditions_fail(self):
+        with patch.object(retirement, 'guard', side_effect=ValueError('backup not verified')), \
+             patch.object(retirement.shutil, 'rmtree') as remove, patch.object(retirement, 'run') as commands:
+            with self.assertRaises(ValueError):
+                retirement.retire()
+            remove.assert_not_called()
+            commands.assert_not_called()
 
 
 if __name__ == '__main__':

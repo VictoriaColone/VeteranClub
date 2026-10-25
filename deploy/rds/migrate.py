@@ -31,6 +31,7 @@ CONTAINER = 'norman-acceptance-mysql'
 IMAGE = 'public.ecr.aws/docker/library/mysql:8.4'
 SCHEMA = 'norman_acceptance'
 DROPIN = Path('/etc/systemd/system/norman-acceptance.service.d/20-rds.conf')
+UNIT = Path('/etc/systemd/system/norman-acceptance.service')
 
 def run(args, **kwargs):
     return subprocess.run(args, check=True, stderr=subprocess.PIPE, **kwargs)
@@ -166,6 +167,7 @@ def migrate():
     folder = BACKUPS / ('rds-cutover-' + time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()))
     folder.mkdir(parents=True, mode=0o700)
     shutil.copy2(api, folder / 'api.env.before')
+    shutil.copy2(UNIT, folder / 'service.before')
     switched = False
     FLAG.write_text('RDS migration in progress\n')
     FLAG.chmod(0o644)
@@ -185,6 +187,10 @@ def migrate():
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(Path(__file__).with_name('api-rds.conf'), DROPIN)
         DROPIN.chmod(0o644)
+        # Dependency directives cannot be cleared using an empty drop-in list.
+        # Install the RDS unit itself so Docker can be retired independently.
+        shutil.copy2(Path(__file__).with_name('norman-acceptance.service'), UNIT)
+        UNIT.chmod(0o644)
         run(['systemctl', 'daemon-reload'])
         run(['systemctl', 'start', SERVICE])
         health()
@@ -195,13 +201,17 @@ def migrate():
         if not switched:
             run(['systemctl', 'stop', SERVICE])
             shutil.copy2(folder / 'api.env.before', api)
+            shutil.copy2(folder / 'service.before', UNIT)
             if DROPIN.exists():
-                DROPIN.rename(folder / 'failed-rds-service.conf')
+                shutil.copy2(DROPIN, folder / 'failed-rds-service.conf')
+                DROPIN.unlink()
             run(['systemctl', 'daemon-reload'])
             run(['systemctl', 'start', SERVICE])
             health()
             print('Source database restored; inspect the partial RDS import before retrying.', file=sys.stderr)
-        FLAG.rename(folder / 'maintenance-finished')
+        # /run is normally tmpfs; rename into /var/backups would fail with EXDEV.
+        shutil.copy2(FLAG, folder / 'maintenance-finished')
+        FLAG.unlink()
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

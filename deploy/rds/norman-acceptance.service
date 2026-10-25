@@ -1,0 +1,24 @@
+[Unit]
+Description=Norman Club private acceptance API on RDS (synthetic data only)
+After=network-online.target
+
+[Service]
+Type=simple
+User=norman-app
+Group=norman-app
+WorkingDirectory=/opt/norman-acceptance/current
+EnvironmentFile=/etc/norman-acceptance/api.env
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m -jar /opt/norman-acceptance/current/norman-acceptance.jar
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+MemoryMax=1200M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/norman-acceptance
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -42,6 +42,9 @@ sudo python3 /home/admin/rds/migrate.py migrate
 - `sudo python3 /home/admin/rds/capacity-check.py --output /var/backups/norman-acceptance/capacity.json` 模拟 100 个按 30 秒间隔访问首页的在线访客。使用 4 个测试身份，包含 30 秒渐进加入，不修改业务订单；不是 100 笔同时写入压测。报告仅输出请求量、错误和延迟，不输出会话或响应数据。
 - 前端按当前页面请求所需资源：接单/订单页约 10 秒，其他页面及后台约 30 秒，带随机错峰，隐藏页面暂停；游戏目录和平台规则缓存 5 分钟。操作后的刷新仍立即执行。
 - 迁移脚本不会删除旧数据库。所有数据校验和业务验收通过后，停止旧容器并关闭自动重启，保留已验证备份和快照，再移除旧数据库及不再使用的 Adminer 组件。
+- `deploy/rds/retire-local.py inspect` 会检查 RDS 连接、健康、迁移备份和本次 100 访客报告，并列出精确的旧组件清单。取得所有者对删除清单的确认后，才能执行 `retire --confirmed-removal`；配置恢复副本与 SQL 导出保留在受保护的备份目录。它不会删除 RDS、业务程序或网站文件。
 - RDS 自带备份需在控制台确认开启和保留策略；本地导出不替代 RDS 备份。配置加密密钥也需单独安全保管。
 
 本地验证：`npm test`、`npm run check`、`npm run server:build:acceptance`、`npm run build:acceptance`、`npm run build:mp-weixin`，以及 `python3 -B -m unittest discover -s tests -p test_rds_migration.py`。
+
+迁移收尾需注意：`/run` 通常是 tmpfs，维护标记应复制归档后删除，不能跨文件系统 `rename`。systemd 依赖也不能靠 drop-in 中的空 `Requires=` 清除，因此迁移时安装独立的 RDS 主服务文件，失败时恢复原服务文件。
