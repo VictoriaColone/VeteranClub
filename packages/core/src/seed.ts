@@ -1,5 +1,6 @@
 import { qualifiedGames } from './types';
 import { CLUB_NAME } from './brand';
+import {createClubProducts} from './club-products';
 import type { Database, Game, Product, Order, OrderStatus, Player } from './types';
 export const STORAGE_KEY = 'stellar-club:database:v1';
 export const DEFAULT_ESCORT_TASK = '100w纯带出';
@@ -12,7 +13,7 @@ export const SUPPORTED_GAMES: Game[] = [
   {id:'lol',name:'英雄联盟',short:'L',color:'#d7ad65',tagline:'下一局，一起翻盘',regions:['艾欧尼亚','峡谷之巅','黑色玫瑰']},
 ];
 export function createProducts(players:Player[],games:Game[],now:number):Product[]{
-  return players.filter(p=>p.approved).flatMap(p=>p.qualifications.flatMap(serviceType=>qualifiedGames(p,serviceType).filter(id=>games.some(g=>g.id===id)).map(gameId=>({id:`SP-${p.id}-${serviceType}-${gameId}`,userId:p.userId,playerId:p.id,sellerName:p.name,gameId,serviceType,title:`${games.find(g=>g.id===gameId)!.name} · ${serviceType==='escort'?'任务护航':'时长组队'}`,description:p.bio,price:serviceType==='hourly'?p.price:12800,task:serviceType==='escort'?DEFAULT_ESCORT_TASK:'',active:true,createdAt:now-3600000}))));
+  return [...createClubProducts(),...players.filter(p=>p.approved).flatMap(p=>p.qualifications.flatMap(serviceType=>qualifiedGames(p,serviceType).filter(id=>games.some(g=>g.id===id)).map(gameId=>({id:`SP-${p.id}-${serviceType}-${gameId}`,userId:p.userId,playerId:p.id,sellerName:p.name,gameId,serviceType,title:`${games.find(g=>g.id===gameId)!.name} · ${serviceType==='escort'?'任务护航':'时长组队'}`,description:p.bio,price:serviceType==='hourly'?p.price:12800,task:serviceType==='escort'?DEFAULT_ESCORT_TASK:'',active:true,createdAt:now-3600000}))))];
 }
 export function createSeed(now = Date.now()): Database {
   const games: Game[] = SUPPORTED_GAMES.map(g=>({...g,regions:[...g.regions]}));

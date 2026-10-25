@@ -39,7 +39,7 @@ public class CatalogService {
     public List<Product> products(Actor actor,boolean mine){
         if(mine){actor.user();return db.ownProducts(actor.id());}
         Map<String,Profile> profiles=db.profiles().stream().collect(Collectors.toMap(p->p.id,p->p));Set<String> qualified=db.allQualifications().stream().map(q->q.playerId+":"+q.serviceType+":"+q.gameId).collect(Collectors.toSet());
-        return db.publicProducts().stream().filter(p->profiles.containsKey(p.playerId)&&profiles.get(p.playerId).approved&&qualified.contains(p.playerId+":"+p.serviceType+":"+p.gameId)).toList();
+        return db.publicProducts().stream().filter(p->"club".equals(p.sellerType)||(profiles.containsKey(p.playerId)&&profiles.get(p.playerId).approved&&qualified.contains(p.playerId+":"+p.serviceType+":"+p.gameId))).toList();
     }
     @Transactional public Product publish(Actor actor,Map<String,Object> body){
         Profile p=db.lockProfile(self(actor).id);Inputs in=new Inputs(body,"gameId","serviceType","title","description","price","task");String game=in.text("gameId",1,24),type=type(in.text("serviceType",1,12));game(game);require(qualified(p,type,game),403,"请先通过对应类型与游戏的考核");

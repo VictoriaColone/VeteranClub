@@ -2020,15 +2020,18 @@
                     "type": "string"
                   },
                   "productId": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "购买的在售商品 ID；服务端锁定商品价格及任务。俱乐部商品付款后进入公共池，成员商品绑定发布者。"
                   },
                   "task": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "兼容旧客户端；商品任务以服务端快照为准，买家不能替换。"
                   },
                   "taskPrice": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "整数分；价格、金额上限和实付额由服务端校验"
+                    "description": "兼容旧客户端；不用于计价，以服务端商品价格为准。",
+                    "deprecated": true
                   },
                   "note": {
                     "type": "string"
@@ -3331,12 +3334,13 @@
                     "description": "整数分；价格、金额上限和实付额由服务端校验"
                   },
                   "reason": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "选填；空白或未传时记录“用户申请售后”，不限制最少字数。"
                   }
                 },
                 "required": [
-                  "amount",
-                  "reason"
+                  "amount"
                 ]
               }
             }

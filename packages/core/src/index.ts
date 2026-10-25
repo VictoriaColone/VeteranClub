@@ -1,5 +1,6 @@
 export * from './types';
 export * from './brand';
+export * from './club-products';
 export * from './api';
 export * from './refresh-policy';
 export * from './mock';

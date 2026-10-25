@@ -19,9 +19,9 @@ import static cn.normanclub.business.Rows.map;
 
 @Service
 public class PaymentService {
-    private final Map<String,PaymentGateway> gateways;private final OrderMapper orders;private final LedgerMapper db;private final CatalogMapper catalog;private final CatalogService services;
+    private final PublicOrderPool pool;private final Map<String,PaymentGateway> gateways;private final OrderMapper orders;private final LedgerMapper db;private final CatalogMapper catalog;private final CatalogService services;
     private final LedgerService ledger;private final TaskService tasks;private final AuditService audit;private final Clock clock;private final JsonMapper json;private final TransactionTemplate tx;
-    public PaymentService(List<PaymentGateway> gateways,OrderMapper orders,LedgerMapper db,CatalogMapper catalog,CatalogService services,LedgerService ledger,TaskService tasks,AuditService audit,Clock clock,JsonMapper json,PlatformTransactionManager manager){this.gateways=gateways.stream().collect(Collectors.toMap(PaymentGateway::channel,g->g));this.orders=orders;this.db=db;this.catalog=catalog;this.services=services;this.ledger=ledger;this.tasks=tasks;this.audit=audit;this.clock=clock;this.json=json;tx=new TransactionTemplate(manager);}
+    public PaymentService(List<PaymentGateway> gateways,OrderMapper orders,LedgerMapper db,CatalogMapper catalog,CatalogService services,LedgerService ledger,TaskService tasks,AuditService audit,Clock clock,JsonMapper json,PlatformTransactionManager manager,PublicOrderPool pool){this.pool=pool;this.gateways=gateways.stream().collect(Collectors.toMap(PaymentGateway::channel,g->g));this.orders=orders;this.db=db;this.catalog=catalog;this.services=services;this.ledger=ledger;this.tasks=tasks;this.audit=audit;this.clock=clock;this.json=json;tx=new TransactionTemplate(manager);}
     public PaymentGateway gateway(String name){PaymentGateway g=gateways.get(name);require(g!=null,400,"不支持的支付渠道");return g;}
     public List<Map<String,Object>> channels(){return gateways.values().stream().sorted(Comparator.comparing(PaymentGateway::channel)).map(g->map("channel",g.channel(),"enabled",g.configured(),"message",g.configured()?"可用":"渠道尚未接入")).toList();}
     @Transactional public Map<String,Object> create(Actor actor,String orderId,Map<String,Object> body,String requestKey){
@@ -30,7 +30,7 @@ public class PaymentService {
         Order o=orders.lock(Inputs.identifier(orderId));require(o!=null,404,"订单不存在");require(o.bossId.equals(actor.id()),403,"只能支付自己的订单");
         Payment prior=db.paymentRequest(actor.id(),requestKey);if(prior!=null){require(prior.orderId.equals(o.id)&&prior.channel.equals(channel),409,"请求号已经用于其他支付");return view(prior);}
         require(o.status.equals("unpaid")&&o.expiresAt>clock.millis(),409,"订单已关闭或支付超时");
-        if(o.productId!=null){Product product=catalog.lockProduct(o.productId);require(product!=null&&product.active&&services.qualified(catalog.lockProfile(product.playerId),o.serviceType,o.gameId),409,"商品已下架或服务资格失效");}
+        if(o.productId!=null){Product product=catalog.lockProduct(o.productId);require(product!=null&&product.active&&("club".equals(product.sellerType)||services.qualified(catalog.lockProfile(product.playerId),o.serviceType,o.gameId)),409,"商品已下架或服务资格失效");}
         Payment active=db.payments(o.id).stream().filter(p->Set.of("creating","pending","unknown").contains(p.status)).findFirst().orElse(null);
         require(active==null,409,"订单已有支付尝试，请先查询结果，勿重复支付");
         Payment p=new Payment();p.id=Crypto.id("PAY_");p.orderId=o.id;p.userId=actor.id();p.channel=channel;p.requestKey=requestKey;p.amount=o.amount;p.currency="CNY";p.status="creating";p.createdAt=clock.millis();p.updatedAt=p.createdAt;db.insertPayment(p);tasks.enqueue("PAYMENT_CREATE",p.id,clock.millis());return view(p);
@@ -54,7 +54,7 @@ public class PaymentService {
         db.notification(key,p.id,clock.millis());p.transactionId=verified.transactionId();p.merchantId=verified.merchantId();p.updatedAt=clock.millis();
         if(o.paidAt!=null){p.status=Objects.equals(o.paymentId,p.id)?"paid":"duplicate_paid";if(p.status.equals("duplicate_paid"))tasks.enqueue("PAYMENT_EXCEPTION",p.id,clock.millis());db.updatePayment(p);return;}
         if(o.status.equals("cancelled")){p.status="late_paid";db.updatePayment(p);tasks.enqueue("PAYMENT_EXCEPTION",p.id,clock.millis());audit.record("系统","支付异常",o.id,"已关闭订单收到渠道收款，待退款补偿");return;}
-        p.status="paid";db.updatePayment(p);o.paidAt=clock.millis();o.paymentId=p.id;o.status="waiting";require(orders.update(o)==1,409,"订单状态冲突");event(o,"渠道支付已确认",null);audit.record("系统","收款确认",o.id,p.channel+" · "+p.amount+" 分");
+        p.status="paid";db.updatePayment(p);o.paidAt=clock.millis();o.paymentId=p.id;o.status="waiting";require(orders.update(o)==1,409,"订单状态冲突");pool.changed();event(o,"渠道支付已确认",null);audit.record("系统","收款确认",o.id,p.channel+" · "+p.amount+" 分");
     }
     public boolean query(String id){
         Payment p=db.payment(id);if(p==null||Set.of("paid","closed","late_paid","duplicate_paid").contains(p.status))return true;
@@ -70,7 +70,7 @@ public class PaymentService {
         Refund refund=db.lockRefund(id);if(refund==null||!refund.status.equals("processing"))return true;Payment p=db.payment(refund.paymentId);PaymentGateway gateway=gateway(p.channel);require(gateway.configured(),503,"退款渠道未配置");
         PaymentGateway.RefundStatus state=gateway.refund(refund,p);if(!"refunded".equals(state.state()))return false;
         require(id.equals(state.refundId())&&refund.amount==state.amount()&&state.channelRefundId()!=null,400,"退款结果核验未通过");
-        tx.executeWithoutResult(s->{Order o=orders.lock(refund.orderId);Refund r=db.lockRefund(id);if(r.status.equals("refunded"))return;require(o.refundStatus.equals("processing"),409,"退款状态冲突");r.status="refunded";r.channelRefundId=state.channelRefundId();db.updateRefund(r);o.refundStatus="refunded";o.earnings=(int)((long)(o.amount-r.amount)*(10000-o.commissionBps)/10000);if(r.amount==o.amount){o.status="cancelled";orders.release(o.id);}ledger.credit(o);require(orders.update(o)==1,409,"订单状态冲突");event(o,"渠道退款已确认",r.reviewNote);audit.record("系统","退款完成",o.id,r.amount+" 分");});return true;
+        tx.executeWithoutResult(s->{Order o=orders.lock(refund.orderId);Refund r=db.lockRefund(id);if(r.status.equals("refunded"))return;require(o.refundStatus.equals("processing"),409,"退款状态冲突");r.status="refunded";r.channelRefundId=state.channelRefundId();db.updateRefund(r);o.refundStatus="refunded";o.earnings=(int)((long)(o.amount-r.amount)*(10000-o.commissionBps)/10000);if(r.amount==o.amount){o.status="cancelled";orders.release(o.id);}ledger.credit(o);require(orders.update(o)==1,409,"订单状态冲突");pool.changed();event(o,"渠道退款已确认",r.reviewNote);audit.record("系统","退款完成",o.id,r.amount+" 分");});return true;
     }
     private void event(Order o,String label,String note){Event e=new Event();e.id=Crypto.id("ev_");e.orderId=o.id;e.at=clock.millis();e.actor="系统";e.label=label;e.note=note;orders.event(e);}
 }

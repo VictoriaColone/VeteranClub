@@ -71,3 +71,17 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .hall-filter-controls{display:flex;align-items:center;gap:12px;flex-shrink:0}.hall-filter-toggle{display:flex;align-items:center;gap:6px;min-height:36px;color:var(--club-secondary);font-size:11px;white-space:nowrap}.hall-filter-switch{display:flex;align-items:center;width:30px;height:18px;padding:2px;border:1px solid #555a6c;border-radius:12px;background:#303442}.hall-filter-switch>view{width:12px;height:12px;border-radius:50%;background:#bfc2ce;transition:transform .15s}.hall-filter-switch.on{background:var(--club-primary);border-color:var(--club-primary)}.hall-filter-switch.on>view{transform:translateX(12px);background:#26301b}.hall-filter-summary>text{min-width:0;overflow-wrap:anywhere}.filter-save-hint{display:block;margin-top:6px}
 
 .seller-state{white-space:nowrap}.seller-state.busy{color:#d6b1f2}.seller-state.offline,.seller-state.unknown{color:var(--club-muted)}.service-availability{padding:13px 14px;margin:14px 0;border:1px solid var(--club-border);border-radius:12px;background:var(--club-surface)}.service-availability>view{font-size:12px;font-weight:600;color:#b8cd9e}.service-availability>text{display:block;font-size:11px;line-height:1.8;margin-top:5px;color:var(--club-secondary)}.service-availability.busy>view{color:#d6b1f2}.service-availability.offline>view,.service-availability.unknown>view{color:var(--club-secondary)}
+
+/* Official catalog and order invitation identity share the existing lime/purple palette. */
+.club-product{border-color:#d9fd8842;background:linear-gradient(135deg,#d9fd8809,var(--club-surface) 65%)}
+.product-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.official-badge{font-size:9px;line-height:1.6;padding:1px 5px;border:1px solid #d9fd8840;border-radius:4px;color:var(--club-primary);font-weight:500}
+.seller-avatar.club-avatar{background:#d9fd8818;color:var(--club-primary);font-size:20px;font-weight:400}
+.seller-state.official{color:var(--club-secondary)}
+.order-provider{display:flex;align-items:center;gap:9px;margin:14px 0;font-size:12px;min-width:0}
+.order-provider>.seller-avatar{width:30px;height:30px;border-radius:9px}
+.provider-caption{display:block;font-size:10px;color:var(--club-muted);line-height:1.6}
+.provider-name{color:var(--club-text);font-weight:600;line-height:1.6}
+.provider-progress{margin-left:auto;color:var(--club-secondary);font-size:10px;text-align:right;max-width:45%}
+.checkout-service{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--club-secondary)}
+.product-provider .input-help{display:block;font-size:11px;margin-top:5px}

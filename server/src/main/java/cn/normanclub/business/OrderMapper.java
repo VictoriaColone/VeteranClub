@@ -6,6 +6,7 @@ import cn.normanclub.business.Rows.*;
 
 @Mapper
 public interface OrderMapper {
+    @Select("SELECT * FROM club_order WHERE status='waiting' AND paid_at IS NOT NULL AND preferred_player_id IS NULL AND player_id IS NULL AND refund_status NOT IN ('pending','processing') ORDER BY created_at,id") List<Order> publicPool();
     @Select("SELECT * FROM club_order WHERE id=#{id}") Order order(String id);
     @Select("SELECT * FROM club_order WHERE id=#{id} FOR UPDATE") Order lock(String id);
     @Insert("INSERT INTO club_order(id,product_id,product_title,boss_id,boss_name,game_id,game_name,region,service_type,task,preferred_player_id,preferred_player_name,unit_price,quantity,amount,commission_bps,earnings,status,refund_status,note,created_at,expires_at) VALUES(#{id},#{productId},#{productTitle},#{bossId},#{bossName},#{gameId},#{gameName},#{region},#{serviceType},#{task},#{preferredPlayerId},#{preferredPlayerName},#{unitPrice},#{quantity},#{amount},#{commissionBps},#{earnings},#{status},#{refundStatus},#{note},#{createdAt},#{expiresAt})") void insert(Order o);

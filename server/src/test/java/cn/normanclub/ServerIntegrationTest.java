@@ -76,7 +76,10 @@ class ServerIntegrationTest {
     String unique(){return UUID.randomUUID().toString().replace("-","");}
     User user(){String phone=phone(),ip="198.51.100."+(SEQUENCE.get()%200+1);auth.sendCode(phone,ip);var login=auth.smsLogin(phone,sms.codes.get(phone),ip,true);return new User(auth.authenticate(login.token(),"user",true),login.token(),phone);}
     User qualified(String type){User u=user();var application=catalog.apply(u.actor,map("serviceType",type,"gameIds",List.of("delta"),"introduction","这是独立考核测试申请，有丰富的协作经验。"));String id=(String)application.get("id");catalog.review(operator,id,map("status","assessment","note","资料核验通过，安排考核"));catalog.review(operator,id,map("status","approved","score",88,"note","专项考核记录核实通过"));catalog.availability(u.actor,map("available",true));return u;}
-    Order create(User u,String type,int amount){Map<String,Object> body=map("gameId","delta","serviceType",type,"region","国服","quantity",1,"note","集成测试服务需求");if(type.equals("escort")){body.put("task","100w纯带出");body.put("taskPrice",amount);}return orderDb.order((String)orders.create(u.actor,body,unique()).get("id"));}
+    Order create(User u,String type,int amount){
+        Product item=new Product();item.id="fixture-"+unique();item.sellerType="club";item.sellerName="诺曼部落";item.gameId="delta";item.serviceType=type;item.title="测试商品";item.description="集成测试专用定价商品";item.price=type.equals("escort")?amount:6800;item.task=type.equals("escort")?"100w纯带出":"";item.active=true;item.createdAt=clock.millis();profiles.insertProduct(item);
+        return orderDb.order((String)orders.create(u.actor,map("productId",item.id,"gameId","delta","serviceType",type,"region","国服","quantity",1,"note","集成测试服务需求"),unique()).get("id"));
+    }
     Payment paid(User u,Order order){String id=(String)payments.create(u.actor,order.id,map("channel","test"),unique()).get("id");payments.prepare(id);Payment p=ledgerDb.payment(id);payments.acceptVerified(new PaymentGateway.VerifiedPayment("test",p.id,"txn-"+p.id,"test-merchant",p.amount,"CNY","event-"+p.id));return ledgerDb.payment(id);}
     String staffAccount(String role){String username="staff_"+unique().substring(0,12);staff.create(operator,map("username",username,"name","测试员工","role",role,"password",PASSWORD));return username;}
     HttpResponse<String> request(String method,String path,Object body,Map<String,String> headers)throws Exception{
@@ -116,6 +119,30 @@ class ServerIntegrationTest {
         assertThrows(ApiException.class,()->catalog.publish(u.actor,map("gameId","delta","serviceType","escort","title","测试护航商品","description","没有护航资格不得发布","price",1000,"task","100w纯带出")));
     }
     boolean servicesQualified(User u,String type){return catalog.qualified(profiles.profile(u.actor.playerId()),type,"delta");}
+    @Autowired PublicOrderPool publicPool;
+    @Test void officialCatalogPriceAndPoolRecoverFromDatabaseAndRefundWithoutReason(){
+        User buyer=user(),member=qualified("escort");
+        var official=catalog.products(buyer.actor,false).stream().filter(p->p.id.equals("club-escort-delta")).findFirst().orElseThrow();
+        assertEquals("club",official.sellerType);assertNull(official.playerId);assertEquals("诺曼部落",official.sellerName);
+        var input=map("productId",official.id,"gameId","delta","serviceType","escort","region","国服","quantity",1,"taskPrice",1,"task","试图修改任务");
+        Order o=orderDb.order((String)orders.create(buyer.actor,input,unique()).get("id"));assertEquals(12800,o.amount);assertEquals("100w纯带出",o.task);assertNull(o.preferredPlayerId);
+        assertFalse(publicPool.orders().stream().anyMatch(v->v.id.equals(o.id)));paid(buyer,o);
+        assertTrue(orders.list(member.actor,Map.of("scope","hall")).stream().anyMatch(v->v.get("id").equals(o.id)));
+        var rebuilt=new PublicOrderPool(orderDb);assertTrue(rebuilt.orders().stream().anyMatch(v->v.id.equals(o.id)));
+        orders.act(buyer.actor,o.id,"refund",map("amount",o.amount));assertEquals("用户申请售后",orderDb.order(o.id).refundReason);
+        assertFalse(publicPool.orders().stream().anyMatch(v->v.id.equals(o.id)));
+        orders.act(operator,o.id,"review-refund",map("approve",false,"note","核实后恢复订单"));
+        assertTrue(publicPool.orders().stream().anyMatch(v->v.id.equals(o.id)));
+        orders.act(member.actor,o.id,"accept",Map.of());assertFalse(publicPool.orders().stream().anyMatch(v->v.id.equals(o.id)));
+        assertThrows(ApiException.class,()->orders.create(buyer.actor,map("productId",official.id,"gameId","delta","serviceType","escort","region","国服","quantity",1,"playerId",member.actor.playerId()),unique()));
+    }
+    @Test void privateProductNeverEntersPoolAndShortRefundReasonsAreAccepted(){
+        User buyer=user(),member=qualified("hourly");Product product=catalog.publish(member.actor,map("gameId","delta","serviceType","hourly","title","指定组队商品","description","认真完成约定时长服务","price",8800));
+        String id=(String)orders.create(buyer.actor,map("productId",product.id,"gameId","delta","serviceType","hourly","region","国服","quantity",2),unique()).get("id");
+        Order o=orderDb.order(id);assertEquals(member.actor.playerId(),o.preferredPlayerId);assertEquals(member.actor.name(),o.preferredPlayerName);assertEquals(17600,o.amount);paid(buyer,o);
+        assertFalse(publicPool.orders().stream().anyMatch(v->v.id.equals(id)));
+        orders.act(buyer.actor,id,"refund",map("amount",100,"reason","退"));assertEquals("pending",orderDb.order(id).refundStatus);
+    }
     @Test void productCanBeBookedRepeatedlyWhileOfflineAndCannotBeBoughtBySeller(){
         User seller=qualified("escort"),buyer=user();Product product=catalog.publish(seller.actor,map("gameId","delta","serviceType","escort","title","长期任务护航","description","可以重复预约的个人护航服务","price",101,"task","100w纯带出"));catalog.availability(seller.actor,map("available",false));
         Map<String,Object> body=map("productId",product.id,"gameId","delta","serviceType","escort","region","国服","quantity",1,"taskPrice",99999,"task","篡改任务");
@@ -128,6 +155,14 @@ class ServerIntegrationTest {
         User buyer=user();Order order=create(buyer,"escort",103);paid(buyer,order);List<User> members=List.of(qualified("escort"),qualified("escort"),qualified("escort"));CountDownLatch start=new CountDownLatch(1);AtomicInteger winners=new AtomicInteger();
         try(ExecutorService pool=Executors.newFixedThreadPool(3)){List<Future<?>> futures=new ArrayList<>();for(User u:members)futures.add(pool.submit(()->{try{start.await();orders.act(u.actor,order.id,"accept",Map.of());winners.incrementAndGet();}catch(Exception expected){}}));start.countDown();for(Future<?> f:futures)f.get(15,TimeUnit.SECONDS);}
         assertEquals(1,winners.get());assertEquals(1,orderDb.members(order.id).size());
+    }
+    @Test void cachedPublicPoolConcurrentGrabSkipsOrdersAlreadyClaimed()throws Exception{
+        User buyer=user();List<User> members=List.of(qualified("escort"),qualified("escort"),qualified("escort"));
+        for(User u:members){Qualification q=new Qualification();q.playerId=u.actor.playerId();q.serviceType="escort";q.gameId="lol";q.grantedAt=clock.millis();profiles.grant(q);}
+        Set<String> expected=new HashSet<>();for(int n=0;n<2;n++){String id=(String)orders.create(buyer.actor,map("productId","club-escort-lol","gameId","lol","serviceType","escort","region","艾欧尼亚","quantity",1),unique()).get("id");expected.add(id);paid(buyer,orderDb.order(id));}
+        publicPool.orders();Set<String> taken=java.util.concurrent.ConcurrentHashMap.newKeySet();CountDownLatch start=new CountDownLatch(1);
+        try(ExecutorService workers=Executors.newFixedThreadPool(3)){List<Future<?>> futures=new ArrayList<>();for(User u:members)futures.add(workers.submit(()->{try{start.await();taken.add((String)orders.grab(u.actor,map("serviceType","escort","gameId","lol")).get("id"));}catch(ApiException unavailable){assertEquals(404,unavailable.status);}catch(InterruptedException e){throw new RuntimeException(e);}}));start.countDown();for(Future<?> f:futures)f.get(15,TimeUnit.SECONDS);}
+        assertEquals(expected,taken);for(String id:expected)assertEquals(1,orderDb.members(id).size());
     }
     @Test void sameMemberCannotOccupyTwoOrdersConcurrently()throws Exception{
         User buyer=user(),member=qualified("escort");Order a=create(buyer,"escort",105),b=create(buyer,"escort",107);paid(buyer,a);paid(buyer,b);CountDownLatch start=new CountDownLatch(1);AtomicInteger winners=new AtomicInteger();

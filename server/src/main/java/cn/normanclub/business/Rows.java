@@ -14,7 +14,7 @@ public final class Rows {
         public Integer score;public long createdAt;public Long reviewedAt;
     }
     public static class Product {
-        public String id,userId,playerId,sellerName,gameId,serviceType,title,description,task;
+        public String id,userId,playerId,sellerType="member",sellerName,gameId,serviceType,title,description,task;
         public int price;public boolean active;public long createdAt;
     }
     public static class Order {

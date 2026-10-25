@@ -20,9 +20,9 @@ public interface CatalogMapper {
     @Delete("DELETE FROM service_qualification WHERE player_id=#{id}") void revoke(String id);
     @Select("SELECT * FROM product WHERE id=#{id}") Product product(String id);
     @Select("SELECT * FROM product WHERE id=#{id} FOR UPDATE") Product lockProduct(String id);
-    @Select("SELECT * FROM product WHERE active=TRUE ORDER BY created_at DESC LIMIT 500") List<Product> publicProducts();
+    @Select("SELECT * FROM product WHERE active=TRUE ORDER BY CASE WHEN seller_type='club' THEN 0 ELSE 1 END,created_at DESC,id LIMIT 500") List<Product> publicProducts();
     @Select("SELECT * FROM product WHERE user_id=#{id} ORDER BY created_at DESC LIMIT 500") List<Product> ownProducts(String id);
-    @Insert("INSERT INTO product(id,user_id,player_id,seller_name,game_id,service_type,title,description,price,task,active,created_at) VALUES(#{id},#{userId},#{playerId},#{sellerName},#{gameId},#{serviceType},#{title},#{description},#{price},#{task},#{active},#{createdAt})") void insertProduct(Product p);
+    @Insert("INSERT INTO product(id,user_id,player_id,seller_type,seller_name,game_id,service_type,title,description,price,task,active,created_at) VALUES(#{id},#{userId},#{playerId},#{sellerType},#{sellerName},#{gameId},#{serviceType},#{title},#{description},#{price},#{task},#{active},#{createdAt})") void insertProduct(Product p);
     @Update("UPDATE product SET active=#{active} WHERE id=#{id}") void productActive(String id,boolean active);
     @Select("<script>SELECT * FROM qualification_application <if test='!staff'>WHERE user_id=#{userId}</if> ORDER BY created_at DESC LIMIT 500</script>") List<Application> applications(boolean staff,String userId);
     @Select("SELECT * FROM qualification_application WHERE id=#{id} FOR UPDATE") Application lockApplication(String id);

@@ -1,5 +1,6 @@
 import {clubTime,formatCompactMoney} from './runtime';
-export interface Product { id:string; userId:string; playerId:string; sellerName:string; gameId:string; serviceType:ServiceType; title:string; description:string; price:number; task:string; active:boolean; createdAt:number }
+export interface Product { id:string; userId:string|null; playerId:string|null; sellerType?:'club'|'member'; sellerName:string; gameId:string; serviceType:ServiceType; title:string; description:string; price:number; task:string; active:boolean; createdAt:number }
+export const isClubProduct=(product:Product)=>product.sellerType==='club';
 export interface ProductInput { gameId:string; serviceType:ServiceType; title:string; description:string; price:number; task?:string }
 export type ServiceType = 'escort' | 'hourly';
 export const serviceLabels: Record<ServiceType,string> = {escort:'护航订单',hourly:'组队订单'};
