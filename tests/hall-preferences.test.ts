@@ -2,64 +2,42 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {MemoryStorage,createMockServer,type Order} from '../packages/core/src/index';
 import {createUniStorage} from '../apps/mobile/src/services/storage';
-import {parseHallFilter,matchesHallFilter} from '../apps/mobile/src/services/hall-filter';
+import {parseHallFilter,matchesHallFilter,emptyHallFilterDraft} from '../apps/mobile/src/services/hall-filter';
 import {emptyHallPreferences,loadHallPreferences,saveHallPreferences} from '../apps/mobile/src/services/hall-preferences';
 
-test('本地记录按用户和订单类型隔离，重建客户端恢复条件及关闭状态',()=>{
+test('按用户与公共/私有单分别记录，关闭重开客户端恢复游戏、类型和过滤开关',()=>{
   const values=new Map<string,unknown>();
   const storage=()=>createUniStorage({getStorageSync:key=>values.get(key),setStorageSync:(key,value)=>{values.set(key,value);}});
-  const prefs=emptyHallPreferences();
-  prefs.hourly={enabled:false,conditions:{minHours:'2',maxHours:'4',minPrice:'50.50',maxPrice:'100'}};
-  prefs.escort.conditions={minHours:'',maxHours:'',minPrice:'200',maxPrice:'300'};
+  const prefs=emptyHallPreferences();prefs.public={enabled:false,conditions:{gameId:'delta',serviceType:'escort'}};prefs.private.conditions={gameId:'valorant',serviceType:'hourly'};
   assert.equal(saveHallPreferences(storage(),'user-a',prefs),true);
   assert.deepEqual(loadHallPreferences(storage(),'user-a'),prefs);
   assert.deepEqual(loadHallPreferences(storage(),'user-b'),emptyHallPreferences());
-  const restored=loadHallPreferences(storage(),'user-a');restored.escort.enabled=false;
-  assert.equal(saveHallPreferences(storage(),'user-a',restored),true);
-  assert.deepEqual(loadHallPreferences(storage(),'user-a').hourly,prefs.hourly);
-  assert.equal(loadHallPreferences(storage(),'user-a').escort.enabled,false);
+  const restored=loadHallPreferences(storage(),'user-a');restored.private.enabled=false;saveHallPreferences(storage(),'user-a',restored);
+  assert.deepEqual(loadHallPreferences(storage(),'user-a').public,prefs.public);assert.equal(loadHallPreferences(storage(),'user-a').private.enabled,false);
 });
 
-test('关闭过滤时条件仍保存，重开后按原范围过滤，零元上限不会丢失',()=>{
-  const storage=new MemoryStorage(),prefs=emptyHallPreferences();
-  prefs.hourly.conditions={minHours:'3',maxHours:'4',minPrice:'0',maxPrice:'0'};
-  prefs.hourly.enabled=false;saveHallPreferences(storage,'user',prefs);
-  const restored=loadHallPreferences(storage,'user');
-  const order:Order={...createMockServer(new MemoryStorage()).read().orders[0],serviceType:'hourly',quantity:1,earnings:10000};
-  const filter=parseHallFilter('hourly',restored.hourly.conditions);
-  assert.equal(matchesHallFilter(order,filter,restored.hourly.enabled),true);
-  restored.hourly.enabled=true;
-  assert.equal(matchesHallFilter(order,filter,restored.hourly.enabled),false);
-  assert.equal(restored.hourly.conditions.maxPrice,'0');
+test('关闭过滤保留选择，重新开启后恢复按游戏和类型过滤',()=>{
+  const storage=new MemoryStorage(),prefs=emptyHallPreferences();prefs.public={enabled:false,conditions:{gameId:'delta',serviceType:'escort'}};saveHallPreferences(storage,'user',prefs);
+  const restored=loadHallPreferences(storage,'user'),order:Order={...createMockServer(new MemoryStorage()).read().orders[0],gameId:'lol',serviceType:'hourly'};
+  const filter=parseHallFilter(restored.public.conditions);assert.equal(matchesHallFilter(order,filter,restored.public.enabled),true);
+  restored.public.enabled=true;assert.equal(matchesHallFilter(order,filter,restored.public.enabled),false);assert.deepEqual(restored.public.conditions,prefs.public.conditions);
 });
 
 test('清除条件会写入本地，刷新后不重新出现，开关状态保持不变',()=>{
-  const storage=new MemoryStorage(),prefs=emptyHallPreferences();
-  prefs.escort.conditions.minPrice='100';prefs.escort.enabled=false;
-  saveHallPreferences(storage,'user',prefs);
-  const restored=loadHallPreferences(storage,'user');restored.escort.conditions=emptyHallPreferences().escort.conditions;
-  saveHallPreferences(storage,'user',restored);
-  const next=loadHallPreferences(storage,'user');
-  assert.deepEqual(next.escort.conditions,emptyHallPreferences().escort.conditions);
-  assert.equal(next.escort.enabled,false);
+  const storage=new MemoryStorage(),prefs=emptyHallPreferences();prefs.private.conditions={gameId:'lol',serviceType:'hourly'};prefs.private.enabled=false;saveHallPreferences(storage,'user',prefs);
+  const restored=loadHallPreferences(storage,'user');restored.private.conditions=emptyHallFilterDraft();saveHallPreferences(storage,'user',restored);
+  assert.deepEqual(loadHallPreferences(storage,'user').private,{enabled:false,conditions:emptyHallFilterDraft()});
 });
 
-test('无效缓存安全回退，只丢弃损坏类型的条件',()=>{
-  const storage=new MemoryStorage(),prefs=emptyHallPreferences();
-  prefs.hourly.conditions={minHours:'4',maxHours:'1',minPrice:'100',maxPrice:'50'};
-  prefs.hourly.enabled=false;prefs.escort.conditions.minPrice='128';
-  saveHallPreferences(storage,'user',prefs);
-  const restored=loadHallPreferences(storage,'user');
-  assert.deepEqual(restored.hourly.conditions,emptyHallPreferences().hourly.conditions);
-  assert.equal(restored.hourly.enabled,false);assert.equal(restored.escort.conditions.minPrice,'128');
-  for(const raw of ['not-json','null','{"version":2}','[]']){
-    const broken={getItem:()=>raw,setItem:()=>{}};
-    assert.deepEqual(loadHallPreferences(broken,'user'),emptyHallPreferences());
-  }
+test('旧时长价格缓存不再生效，无效缓存仅重置损坏范围',()=>{
+  const storage=new MemoryStorage();storage.setItem('stellar-club:hall-filters:v1:user',JSON.stringify({version:1,hourly:{enabled:true,conditions:{minHours:'8',maxPrice:'0'}}}));
+  assert.deepEqual(loadHallPreferences(storage,'user'),emptyHallPreferences());
+  const prefs=emptyHallPreferences();prefs.public={enabled:false,conditions:{gameId:'unsupported',serviceType:'all'}};prefs.private.conditions={gameId:'delta',serviceType:'escort'};saveHallPreferences(storage,'user',prefs);
+  const restored=loadHallPreferences(storage,'user');assert.deepEqual(restored.public.conditions,emptyHallFilterDraft());assert.equal(restored.public.enabled,false);assert.deepEqual(restored.private.conditions,prefs.private.conditions);
+  for(const raw of ['not-json','null','{"version":1}','[]'])assert.deepEqual(loadHallPreferences({getItem:()=>raw,setItem:()=>{}},'user'),emptyHallPreferences());
 });
 
 test('本地存储不可用时可继续使用，保存失败返回可提示的结果',()=>{
   const unavailable={getItem(){throw new Error('denied');},setItem(){throw new Error('full');}};
-  assert.deepEqual(loadHallPreferences(unavailable,'user'),emptyHallPreferences());
-  assert.equal(saveHallPreferences(unavailable,'user',emptyHallPreferences()),false);
+  assert.deepEqual(loadHallPreferences(unavailable,'user'),emptyHallPreferences());assert.equal(saveHallPreferences(unavailable,'user',emptyHallPreferences()),false);
 });

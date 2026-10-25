@@ -1,30 +1,26 @@
-import type {Order,ServiceType} from '@stellar/core';
+import {canServe,orderMembers,type Order,type Player,type ServiceType} from '@stellar/core';
 
-export interface HallFilter {minHours?:number;maxHours?:number;minEarnings?:number;maxEarnings?:number}
-export interface HallFilterDraft {minHours:string;maxHours:string;minPrice:string;maxPrice:string}
-export const emptyHallFilterDraft=():HallFilterDraft=>({minHours:'',maxHours:'',minPrice:'',maxPrice:''});
+export type HallScope='public'|'private';
+export interface HallFilterDraft {gameId:string;serviceType:'all'|ServiceType}
+export type HallFilter=HallFilterDraft;
+export const emptyHallFilterDraft=():HallFilterDraft=>({gameId:'all',serviceType:'all'});
 
-export function parseHallFilter(type:ServiceType,draft:HallFilterDraft):HallFilter{
-  const price=(raw:string)=>{
-    const value=raw.trim();if(!value)return undefined;
-    if(!/^\d+(?:\.\d{1,2})?$/.test(value)||!Number.isSafeInteger(Math.round(Number(value)*100)))throw new Error('价格请填写非负金额，最多两位小数');
-    return Math.round(Number(value)*100);
-  };
-  const hours=(raw:string)=>{
-    const value=raw.trim();if(!value)return undefined;
-    if(!/^\d+$/.test(value)||Number(value)<1||Number(value)>8)throw new Error('时长请填写 1～8 的整数');
-    return Number(value);
-  };
-  const result:HallFilter={minEarnings:price(draft.minPrice),maxEarnings:price(draft.maxPrice)};
-  if(type==='hourly'){result.minHours=hours(draft.minHours);result.maxHours=hours(draft.maxHours);}
-  if(result.minHours!==undefined&&result.maxHours!==undefined&&result.minHours>result.maxHours)throw new Error('最短时长不能大于最长时长');
-  if(result.minEarnings!==undefined&&result.maxEarnings!==undefined&&result.minEarnings>result.maxEarnings)throw new Error('最低价格不能大于最高价格');
-  return result;
+export function parseHallFilter(draft:HallFilterDraft):HallFilter{
+  if(!['all','delta','valorant','lol'].includes(draft.gameId))throw new Error('请选择支持的游戏');
+  if(!['all','hourly','escort'].includes(draft.serviceType))throw new Error('请选择有效的订单类型');
+  return {gameId:draft.gameId,serviceType:draft.serviceType};
 }
 
 export function matchesHallFilter(order:Order,filter:HallFilter,enabled=true){
-  if(!enabled)return true;
-  return (order.serviceType!=='hourly'||((filter.minHours===undefined||order.quantity>=filter.minHours)&&(filter.maxHours===undefined||order.quantity<=filter.maxHours)))
-    &&(filter.minEarnings===undefined||order.earnings>=filter.minEarnings)
-    &&(filter.maxEarnings===undefined||order.earnings<=filter.maxEarnings);
+  return !enabled||((filter.gameId==='all'||order.gameId===filter.gameId)&&(filter.serviceType==='all'||order.serviceType===filter.serviceType));
+}
+
+// Optional preferences never bypass invitation ownership or per-game onboarding.
+export function receivableHallOrders(source:Order[],scope:HallScope,player:Player|undefined,userId:string|undefined):Order[]{
+  if(!player||!userId||player.userId!==userId)return [];
+  return source.filter(o=>o.status==='waiting'&&!!o.paidAt&&!o.playerId&&!orderMembers(o).length
+    &&o.bossId!==userId&&!['pending','processing','refunded'].includes(o.refundStatus)
+    &&canServe(player,o.serviceType,o.gameId)
+    &&(scope==='public'?!o.preferredPlayerId:o.preferredPlayerId===player.id))
+    .sort((a,b)=>b.createdAt-a.createdAt);
 }

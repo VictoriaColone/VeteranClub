@@ -1,33 +1,29 @@
-import type {ServiceType,StorageAdapter} from '@stellar/core';
-import {emptyHallFilterDraft,parseHallFilter,type HallFilterDraft} from './hall-filter';
+import type {StorageAdapter} from '@stellar/core';
+import {emptyHallFilterDraft,parseHallFilter,type HallFilterDraft,type HallScope} from './hall-filter';
 
-export type HallPreferences=Record<ServiceType,{enabled:boolean;conditions:HallFilterDraft}>;
+export type HallPreferences=Record<HallScope,{enabled:boolean;conditions:HallFilterDraft}>;
 export const emptyHallPreferences=():HallPreferences=>({
-  hourly:{enabled:true,conditions:emptyHallFilterDraft()},
-  escort:{enabled:true,conditions:emptyHallFilterDraft()},
+  public:{enabled:true,conditions:emptyHallFilterDraft()},
+  private:{enabled:true,conditions:emptyHallFilterDraft()},
 });
-const key=(userId:string)=>`stellar-club:hall-filters:v1:${userId}`;
+// v1 contained price/hour ranges, which no longer apply to either order pool.
+const key=(userId:string)=>`stellar-club:hall-filters:v2:${userId}`;
 
 export function loadHallPreferences(storage:StorageAdapter,userId:string):HallPreferences{
   const result=emptyHallPreferences();
   try{
     const raw=storage.getItem(key(userId));if(!raw)return result;
-    const saved=JSON.parse(raw);if(saved?.version!==1)return result;
-    for(const type of ['hourly','escort'] as const){
-      const value=saved[type];if(!value||typeof value!=='object')continue;
-      if(typeof value.enabled==='boolean')result[type].enabled=value.enabled;
-      const conditions=emptyHallFilterDraft();
+    const saved=JSON.parse(raw);if(saved?.version!==2)return result;
+    for(const scope of ['public','private'] as const){
+      const value=saved[scope];if(!value||typeof value!=='object')continue;
+      if(typeof value.enabled==='boolean')result[scope].enabled=value.enabled;
       if(!value.conditions||typeof value.conditions!=='object')continue;
-      for(const field of Object.keys(conditions) as (keyof HallFilterDraft)[]){
-        const text=value.conditions[field];
-        conditions[field]=typeof text==='string'&&text.length<=10?text:'';
-      }
-      try{parseHallFilter(type,conditions);result[type].conditions=conditions;}catch{/* Discard an invalid range without losing the other service type. */}
+      try{result[scope].conditions=parseHallFilter(value.conditions);}catch{/* Discard corrupt conditions for this pool only. */}
     }
-  }catch{/* Missing, corrupt or unavailable local storage must not block the hall. */}
+  }catch{/* Missing, corrupt or unavailable storage must not block receiving orders. */}
   return result;
 }
 
 export function saveHallPreferences(storage:StorageAdapter,userId:string,value:HallPreferences):boolean{
-  try{storage.setItem(key(userId),JSON.stringify({version:1,...value}));return true;}catch{return false;}
+  try{storage.setItem(key(userId),JSON.stringify({version:2,...value}));return true;}catch{return false;}
 }
