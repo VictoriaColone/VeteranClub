@@ -7,7 +7,7 @@ export function miniProgramLayout(info:WindowMetrics,menu?:MenuRect){
   const gap=valid?Math.max(4,menu!.top-status):8;
   const navHeight=valid?menu!.bottom+gap:status+44;
   const safeBottom=Math.max(0,info.safeAreaInsets?.bottom||0);
-  return {status,navHeight,safeBottom,topPadding:valid?menu!.top:status+8,
+  return {windowHeight:info.windowHeight,status,navHeight,safeBottom,topPadding:valid?menu!.top:status+8,
     rightPadding:valid?info.windowWidth-menu!.left+12:104,
     sheetHeight:Math.max(160,Math.floor(Math.min(info.windowHeight*.84,info.windowHeight-navHeight)-46))};
 }

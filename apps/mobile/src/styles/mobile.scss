@@ -127,3 +127,30 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .product-card .product-seller .club-avatar{font-size:27px}
 .product-card .product-seller .product-title{font-size:17px;line-height:1.5;gap:7px}
 .product-card .product-seller .seller-state{display:block;margin:3px 0 0}
+
+/* One bounded viewport: only the middle scroll-view moves. */
+.viewport-shell{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+.mobile-app{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;padding-bottom:0;overflow:hidden}
+.topbar{position:relative;flex-shrink:0;z-index:20;background:var(--club-bg);border-bottom:1px solid var(--club-border)}
+.page-scroll,.login-scroll{flex:1;height:0;min-height:0;width:100%;overflow:hidden}
+.content{padding-bottom:24px}
+.bottom-nav{position:relative;left:auto;bottom:auto;transform:none;flex-shrink:0;width:100%;max-width:none}
+.publish-fab{position:absolute;right:20px}
+.sheet-backdrop{position:absolute;inset:0}
+.sheet{--sheet-scroll-height:calc(var(--club-viewport-height,100vh) * .9 - 32px - var(--club-safe-bottom,env(safe-area-inset-bottom,0px)));z-index:1;display:flex;flex-direction:column;max-height:calc(var(--club-viewport-height,100vh) * .9)}
+.sheet-handle{flex-shrink:0}
+.sheet-scroll{height:var(--sheet-scroll-height);min-height:0;max-height:none}
+/* #ifdef H5 */
+/* This containing block follows the visual viewport, including pinch zoom/panning. */
+.viewport-shell{transform:translateZ(0)}
+.page-scroll .uni-scroll-view{overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+.page-scroll.scroll-locked{pointer-events:none}
+.sheet-scroll{height:auto;max-height:var(--sheet-scroll-height)}
+.sheet-scroll .uni-scroll-view{height:auto!important;max-height:var(--sheet-scroll-height);overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sheet-scroll textarea{overscroll-behavior:contain}
+.order-tabs .uni-scroll-view{overscroll-behavior-x:contain;overscroll-behavior-y:auto}
+@media(min-width:700px){.mobile-app{height:calc(100% - 48px);min-height:0;margin:24px auto}.sheet{--sheet-scroll-height:calc(var(--club-viewport-height,100vh) * .85 - 32px - var(--club-safe-bottom,env(safe-area-inset-bottom,0px)));max-height:calc(var(--club-viewport-height,100vh) * .85)}}
+/* #endif */
+/* #ifdef MP-WEIXIN */
+.is-weixin.mobile-app{max-width:none;margin:0;border:0;border-radius:0}
+/* #endif */

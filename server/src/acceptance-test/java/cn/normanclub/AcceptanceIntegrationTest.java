@@ -80,6 +80,19 @@ class AcceptanceIntegrationTest {
         var foreign=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/v1/auth/sms/login/acceptance")).header("Origin","https://evil.example.com").header("X-Client-Type","h5").header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString("{\"role\":\"admin\"}")).build();
         assertEquals(403,client.send(foreign,HttpResponse.BodyHandlers.ofString()).statusCode());
     }
+    @Test void lanPublicHourlyOrdersRespectLinsEscortOnboardingAndPrivateInvitation()throws Exception{
+        login("user","u-player");java.util.Set<String> publicIds=new java.util.HashSet<>();
+        for(String game:List.of("delta","valorant")){
+            String region=game.equals("delta")?"国服":"国服 · 华东";
+            var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-hourly-"+game,"gameId",game,"serviceType","hourly","region",region,"quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
+            String id=json.readTree(created.body()).path("data").path("id").asText();publicIds.add(id);assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
+        }
+        var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","acceptance-p-escort-escort-delta","gameId","delta","serviceType","escort","region","国服","quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
+        String invited=json.readTree(created.body()).path("data").path("id").asText();assertEquals(200,request("POST","/v1/acceptance/orders/"+invited+"/pay","{}","user").statusCode());
+        login("user","u-escort");String escortHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertFalse(escortHall.contains(id));assertFalse(escortHall.contains(invited));assertTrue(request("GET","/v1/orders",null,"user").body().contains(invited));
+        login("user","u-hourly");String hourlyHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertTrue(hourlyHall.contains(id));assertFalse(hourlyHall.contains(invited));
+        login("user","u-player");String ownHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertFalse(ownHall.contains(id));
+    }
     @Test void legacyDemoStaffSessionsAreRevokedOnStartup(){
         var legacy=new cn.normanclub.auth.AuthMapper.Staff();legacy.id="acceptance-admin";legacy.username="acceptance-admin";legacy.name="旧演示管理员";legacy.role="admin";legacy.passwordHash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(STAFF_PASSWORD);legacy.createdAt=System.currentTimeMillis();legacy.lastTotpStep=-1;authDb.insertStaff(legacy);
         var old=auth.staffLogin(legacy.username,STAFF_PASSWORD,"192.0.2.200");assertNotNull(auth.authenticate(old.token(),"staff",false));

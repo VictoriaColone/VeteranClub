@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {gestureAxis} from '../apps/mobile/src/services/gesture-axis';
 import {miniProgramLayout} from '../apps/mobile/src/services/layout';
 import {createUniStorage} from '../apps/mobile/src/services/storage';
 import {createUniHttpTransport} from '../apps/mobile/src/services/transport';
@@ -67,4 +68,12 @@ test('网络失败和不合法服务响应会拒绝请求，不报告模拟支�
     globalThis.uni={request(options:any){options.success({statusCode:502,data:null});}} as any;
     await assert.rejects(createUniHttpTransport('https://api.example.com',true)('GET','/v1/orders'),/服务暂时不可用/);
   }finally{globalThis.uni=old;}
+});
+
+test('嵌套手势忽略抖动，水平与垂直意图分开，斜向优先垂直阅读',()=>{
+  const origin={clientX:100,clientY:100};
+  assert.equal(gestureAxis(origin,{clientX:104,clientY:105}),null);
+  assert.equal(gestureAxis(origin,{clientX:80,clientY:103}),'x');
+  assert.equal(gestureAxis(origin,{clientX:103,clientY:75}),'y');
+  assert.equal(gestureAxis(origin,{clientX:110,clientY:110}),'y');
 });

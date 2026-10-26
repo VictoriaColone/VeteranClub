@@ -62,3 +62,20 @@ test('指定商品订单付款后进入私有单，售后与接单后移出，�
   assert.equal((await member.act(second.id,'accept')).status,'accepted');assert.equal((await privateOrders()).length,0);
   assert.ok((await member.orders()).some(o=>o.id===second.id&&o.playerId===profile.id));
 });
+
+test('岚购买公共组队服务不会对仅护航入驻的凛展示，指定凛的护航服务进入私有单',async()=>{
+  const storage=new MemoryStorage(),server=createMockServer(storage),data=server.read();data.orders=[];storage.setItem(STORAGE_KEY,JSON.stringify(data));
+  const buyer=new ClubApi(createMockTransport(storage,0)),escort=new ClubApi(createMockTransport(storage,0)),hourly=new ClubApi(createMockTransport(storage,0));
+  await buyer.login('user','u-player');await escort.login('user','u-escort');await hourly.login('user','u-hourly');
+  const escortProfile=(await escort.players()).find(p=>p.userId==='u-escort')!,hourlyProfile=(await hourly.players()).find(p=>p.userId==='u-hourly')!;
+  const publicIds:string[]=[];
+  for(const game of [{id:'delta',region:'国服'},{id:'valorant',region:'国服 · 华东'}]){
+    const order=await buyer.createOrder({productId:'club-hourly-'+game.id,gameId:game.id,serviceType:'hourly',region:game.region,quantity:1});await buyer.act(order.id,'pay');publicIds.push(order.id);
+  }
+  const product=(await escort.products('mine')).find(p=>p.gameId==='delta'&&p.serviceType==='escort')!;
+  const invited=await buyer.createOrder({productId:product.id,gameId:'delta',serviceType:'escort',region:'国服',quantity:1});await buyer.act(invited.id,'pay');
+  assert.deepEqual(receivableHallOrders(await escort.orders({scope:'hall'}),'public',escortProfile,'u-escort'),[]);
+  assert.deepEqual(new Set(receivableHallOrders(await hourly.orders({scope:'hall'}),'public',hourlyProfile,'u-hourly').map(o=>o.id)),new Set(publicIds));
+  assert.deepEqual(receivableHallOrders(await escort.orders(),'private',escortProfile,'u-escort').map(o=>o.id),[invited.id]);
+  assert.ok(!(await buyer.orders({scope:'hall'})).some(o=>publicIds.includes(o.id)));
+});
