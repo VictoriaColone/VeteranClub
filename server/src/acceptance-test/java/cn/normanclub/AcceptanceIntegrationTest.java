@@ -93,6 +93,20 @@ class AcceptanceIntegrationTest {
         login("user","u-hourly");String hourlyHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertTrue(hourlyHall.contains(id));assertFalse(hourlyHall.contains(invited));
         login("user","u-player");String ownHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertFalse(ownHall.contains(id));
     }
+    @Test void copiedOrdersExposeOneTotalInTheCorrectHall()throws Exception{
+        login("user","u-boss");Map<String,String> ids=new HashMap<>();
+        for(String type:List.of("hourly","escort")){
+            int copies=type.equals("hourly")?3:2;
+            var response=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-"+type+"-delta","gameId","delta","serviceType",type,"region","国服","quantity",1,"copies",copies)),"user");assertEquals(200,response.statusCode(),response.body());
+            var order=json.readTree(response.body()).path("data");String id=order.path("id").asText();ids.put(type,id);assertEquals(copies,order.path("copies").asInt());assertEquals(order.path("unitPrice").asInt()*copies,order.path("amount").asInt());
+            assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
+        }
+        for(String type:List.of("hourly","escort")){
+            login("user",type.equals("hourly")?"u-hourly":"u-escort");var hall=json.readTree(request("GET","/v1/orders?scope=hall",null,"user").body()).path("data");int count=0;
+            for(var order:hall)if(order.path("id").asText().equals(ids.get(type))){count++;assertEquals(type.equals("hourly")?3:2,order.path("copies").asInt());assertEquals(type.equals("hourly")?16320:20480,order.path("earnings").asInt());}
+            assertEquals(1,count);
+        }
+    }
     @Test void legacyDemoStaffSessionsAreRevokedOnStartup(){
         var legacy=new cn.normanclub.auth.AuthMapper.Staff();legacy.id="acceptance-admin";legacy.username="acceptance-admin";legacy.name="旧演示管理员";legacy.role="admin";legacy.passwordHash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(STAFF_PASSWORD);legacy.createdAt=System.currentTimeMillis();legacy.lastTotpStep=-1;authDb.insertStaff(legacy);
         var old=auth.staffLogin(legacy.username,STAFF_PASSWORD,"192.0.2.200");assertNotNull(auth.authenticate(old.token(),"staff",false));

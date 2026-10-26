@@ -3,7 +3,7 @@ import {parseMockPath,shanghaiDay} from './runtime';
 import { CLUB_NAME } from './brand';
 import {createClubProducts,clubProductId} from './club-products';
 import {isClubProduct} from './types';
-import { canServe, qualifiedGames, orderMembers, participantEarnings, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
+import { canServe, qualifiedGames, orderMembers, participantEarnings, totalOrderHours, MAX_ORDER_COPIES, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
 const clone=<T>(data:T):T=>JSON.parse(JSON.stringify(data));
@@ -28,6 +28,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       }
       if(db.schema===2){
         let changed=legacyUpgrade;
+        for(const order of db.orders)if(order.copies===undefined){order.copies=1;changed=true;}
         if(db.settings.name!==CLUB_NAME){db.settings.name=CLUB_NAME;changed=true;}
         db.players.forEach(p=>{if(p.subtitle==='欢迎加入星曜'){p.subtitle=`欢迎加入${CLUB_NAME}`;changed=true;}});
         if(['p-hourly','p-escort'].some(id=>!db.players.some(p=>p.id===id))){const seed=createSeed(clock());seed.players.filter(p=>!db.players.some(old=>old.id===p.id)).forEach(p=>db.players.push(p));changed=true;}
@@ -138,16 +139,16 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b={...body} as OrderInput;
       const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');
       const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');
-      check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');check((b.note||'').length<=200,'备注不能超过 200 字');
+      check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'每份服务时长应为 1～8 小时');const copies=b.copies===undefined?1:b.copies;check(Number.isInteger(copies)&&copies>=1&&copies<=MAX_ORDER_COPIES,'购买份数应为 1～99 的整数');check((b.note||'').length<=200,'备注不能超过 200 字');
       if(b.task!==undefined)check(typeof b.task==='string'&&b.task.trim().length>0&&b.task.length<=200,'任务项必须为非空字符串，且不超过 200 字');
       const product=db.products!.find(p=>b.productId?p.id===b.productId:b.playerId?p.active&&p.playerId===b.playerId&&p.serviceType===serviceType&&p.gameId===game.id:p.id===clubProductId(serviceType,game.id));check(product?.active,'商品已下架或不存在');
       check(game.id===product.gameId&&serviceType===product.serviceType,'商品游戏或类型与订单不一致');
       check(!b.playerId||(!isClubProduct(product)&&b.playerId===product.playerId),'商品服务成员不匹配');
       const p=isClubProduct(product)?undefined:db.players.find(p=>p.id===product.playerId);
       if(!isClubProduct(product))check(p?.userId!==s.userId&&p?.approved&&canServe(p,serviceType,game.id),'该队友当前不可预约，请选择其他队友');
-      if(serviceType==='escort')check(b.quantity===1,'护航任务按整单计价');
-      b.task=product.task;const price=product.price,amount=price*b.quantity;
-      const o:Order={productId:product?.id,productTitle:product?.title,serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
+      if(serviceType==='escort')check(b.quantity===1,'每份护航按一次约定任务计价');
+      b.task=product.task;const price=product.price,amount=price*b.quantity*copies;
+      const o:Order={productId:product?.id,productTitle:product?.title,serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,copies,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
     }
     else if(/^\/v1\/orders\/[^/]+(?:\/[^/]+)?$/.test(route)){
       const [, , ,orderId,action]=route.split('/');const o=db.orders.find(o=>o.id===orderId);check(o,'订单不存在',404);
@@ -166,8 +167,8 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
         }else if(action==='remove-assistant'){
           playerOwner(o,s);check(o.serviceType==='escort'&&o.status==='accepted'&&o.refundStatus!=='pending','当前不能变更协作成员');check(body.playerId!==o.playerId&&o.team.some(m=>m.playerId===body.playerId),'只能移除副手');o.team=o.team.filter(m=>m.playerId!==body.playerId);event(o,s,'已移除副手');data=o;
         }else if(action==='start'){playerOwner(o,s);check(o.status==='accepted'&&o.refundStatus!=='pending','订单当前无法开始服务');o.status='serving';o.startedAt=clock();o.demoElapsedMs=0;event(o,s,'服务已开始');audit(db,s,'开始服务',o.id,'队友确认开始服务');data=o;
-        }else if(action==='demo-elapse'){playerOwner(o,s);check(o.serviceType==='hourly'&&o.status==='serving'&&o.refundStatus!=='pending','仅时长服务可模拟计时');o.demoElapsedMs=o.quantity*3600000;event(o,s,'演示计时已走满','仅模拟环境使用');data=o;
-        }else if(action==='finish'){playerOwner(o,s);check(o.status==='serving'&&o.refundStatus!=='pending','订单当前无法结束服务');if(o.serviceType==='escort')check(body.taskCompleted===true,'请确认指定任务已达成，并填写完成记录');else check(clock()-(o.startedAt??clock())+(o.demoElapsedMs||0)>=o.quantity*3600000,'约定服务时长尚未完成');o.taskCompleted=o.serviceType==='escort';check(String(body.note||'').trim().length>=2,'请填写至少 2 字服务记录');o.status='confirming';event(o,s,'服务已结束，等待用户确认',String(body.note).slice(0,200));audit(db,s,'提交完成',o.id,String(body.note).slice(0,200));data=o;
+        }else if(action==='demo-elapse'){playerOwner(o,s);check(o.serviceType==='hourly'&&o.status==='serving'&&o.refundStatus!=='pending','仅时长服务可模拟计时');o.demoElapsedMs=totalOrderHours(o)*3600000;event(o,s,'演示计时已走满','仅模拟环境使用');data=o;
+        }else if(action==='finish'){playerOwner(o,s);check(o.status==='serving'&&o.refundStatus!=='pending','订单当前无法结束服务');if(o.serviceType==='escort')check(body.taskCompleted===true,'请确认指定任务已达成，并填写完成记录');else check(clock()-(o.startedAt??clock())+(o.demoElapsedMs||0)>=totalOrderHours(o)*3600000,'约定服务时长尚未完成');o.taskCompleted=o.serviceType==='escort';check(String(body.note||'').trim().length>=2,'请填写至少 2 字服务记录');o.status='confirming';event(o,s,'服务已结束，等待用户确认',String(body.note).slice(0,200));audit(db,s,'提交完成',o.id,String(body.note).slice(0,200));data=o;
         }else if(action==='confirm'){owner(o,s);check(o.status==='confirming'&&o.refundStatus!=='pending','订单尚未到确认阶段或正在售后');o.status='completed';o.finishedAt=clock();event(o,s,'用户确认完成');audit(db,s,'确认完成',o.id,'系统自动结算成员净报酬（模拟）');data=o;
         }else if(action==='cancel'){if(!['admin','customer_service'].includes(s.role))owner(o,s);check(o.status==='unpaid','已付款订单请走售后退款');o.status='cancelled';event(o,s,'订单已取消');audit(db,s,'取消订单',o.id,'未支付订单已取消');data=o;
         }else if(action==='refund'){

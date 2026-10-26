@@ -20,7 +20,7 @@ public final class Rows {
     public static class Order {
         public String id,productId,productTitle,bossId,bossName,gameId,gameName,region,serviceType,task;
         public String preferredPlayerId,preferredPlayerName,playerId,playerName,status,refundStatus,refundId,refundReason,refundReviewNote,note,paymentId,settlementId;
-        public int unitPrice,quantity,amount,commissionBps,earnings;public Integer refundAmount;public boolean taskCompleted;
+        public int unitPrice,quantity,amount,commissionBps,earnings;public int copies=1;public Integer refundAmount;public boolean taskCompleted;
         public long createdAt,expiresAt,version;public Long paidAt,startedAt,finishedAt;
     }
     public static class Member { public String orderId,playerId,name,settlementId;public int position; }

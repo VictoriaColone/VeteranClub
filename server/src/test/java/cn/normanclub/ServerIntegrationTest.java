@@ -225,6 +225,26 @@ class ServerIntegrationTest {
     @Test void orderCreationIsIdempotentAndRejectsRequestKeyReuse(){
         qualified("hourly");User u=user();Map<String,Object> body=map("gameId","delta","serviceType","hourly","region","国服","quantity",1);String key=unique();var one=orders.create(u.actor,body,key);var two=orders.create(u.actor,body,key);assertEquals(one.get("id"),two.get("id"));Map<String,Object> altered=new HashMap<>(body);altered.put("quantity",2);assertThrows(ApiException.class,()->orders.create(u.actor,altered,key));
     }
+    @Test void multipleCopiesCreateOneOrderWithTotalIncomeAndFullDuration(){
+        for(String type:List.of("hourly","escort")){
+            User buyer=user(),member=qualified(type);int hours=type.equals("hourly")?2:1;
+            Map<String,Object> body=map("productId","club-"+type+"-delta","gameId","delta","serviceType",type,"region","国服","quantity",hours,"copies",3,"taskPrice",1);
+            String key=unique();var created=orders.create(buyer.actor,body,key);String id=(String)created.get("id");assertEquals(id,orders.create(buyer.actor,body,key).get("id"));
+            Map<String,Object> changed=new HashMap<>(body);changed.put("copies",4);assertEquals(409,assertThrows(ApiException.class,()->orders.create(buyer.actor,changed,key)).status);
+            Order order=orderDb.order(id);assertEquals(3,order.copies);assertEquals(order.unitPrice*hours*3,order.amount);assertEquals((int)((long)order.amount*8/10),order.earnings);
+            paid(buyer,order);assertEquals(1,orders.list(member.actor,Map.of("scope","hall")).stream().filter(o->o.get("id").equals(id)).count());
+            orders.act(member.actor,id,"accept",Map.of());orders.act(member.actor,id,"start",Map.of());
+            if(type.equals("hourly")){clock.advance(2*3_600_000L);assertThrows(ApiException.class,()->orders.act(member.actor,id,"finish",map("note","还没有完成全部份数")));clock.advance(4*3_600_000L);}
+            else assertThrows(ApiException.class,()->orders.act(member.actor,id,"finish",map("note","任务尚未全部完成","taskCompleted",false)));
+            orders.act(member.actor,id,"finish",map("note","全部三份约定服务已完成","taskCompleted",true));orders.act(buyer.actor,id,"confirm",Map.of());assertEquals(order.earnings,ledgerDb.income(id,member.actor.playerId()).amount);
+        }
+    }
+    @Test void copyCountIsStrictlyValidatedAndOmittedCountRemainsOne(){
+        User buyer=user();Map<String,Object> body=map("productId","club-escort-delta","gameId","delta","serviceType","escort","region","国服","quantity",1);
+        String old=(String)orders.create(buyer.actor,body,unique()).get("id");assertEquals(1,orderDb.order(old).copies);
+        for(Object invalid:new Object[]{0,-1,100,1.5,"3","1 OR 1=1",true,null}){Map<String,Object> input=new HashMap<>(body);input.put("copies",invalid);assertEquals(400,assertThrows(ApiException.class,()->orders.create(buyer.actor,input,unique())).status);}
+        body.put("copies",99);String max=(String)orders.create(buyer.actor,body,unique()).get("id");assertEquals(12800*99,orderDb.order(max).amount);
+    }
     @Test void concurrentAcceptAllowsOnlyOneWinner()throws Exception{
         User buyer=user();Order order=create(buyer,"escort",103);paid(buyer,order);List<User> members=List.of(qualified("escort"),qualified("escort"),qualified("escort"));CountDownLatch start=new CountDownLatch(1);AtomicInteger winners=new AtomicInteger();
         try(ExecutorService pool=Executors.newFixedThreadPool(3)){List<Future<?>> futures=new ArrayList<>();for(User u:members)futures.add(pool.submit(()->{try{start.await();orders.act(u.actor,order.id,"accept",Map.of());winners.incrementAndGet();}catch(Exception expected){}}));start.countDown();for(Future<?> f:futures)f.get(15,TimeUnit.SECONDS);}

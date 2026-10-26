@@ -15,13 +15,13 @@ export interface Game { id: string; name: string; short: string; color: string; 
 export interface Player { id: string; userId: string; name: string; subtitle: string; gameIds: string[]; tags: string[]; rating: number; completed: number; price: number; color: string; avatar: string; available: boolean; busy?:boolean; approved: boolean; qualifications: ServiceType[]; qualificationGames?: Partial<Record<ServiceType,string[]>>; bio: string }
 export interface ClubUser { id:string; name:string; playerId?:string }
 export interface TimelineEvent { at: number; label: string; actor: string; note?: string }
-export interface Order { productId?:string; productTitle?:string; serviceType:ServiceType; task:string; team:TeamMember[]; startedAt?:number; demoElapsedMs?:number; taskCompleted?:boolean; id: string; bossId: string; bossName: string; gameId: string; gameName: string; region: string; playerId?: string; playerName?: string; preferredPlayerId?: string; preferredPlayerName?: string; unitPrice: number; quantity: number; amount: number; commissionBps: number; earnings: number; status: OrderStatus; refundStatus: RefundStatus; refundReason?: string; refundAmount?: number; refundReviewNote?: string; note: string; createdAt: number; paidAt?: number; finishedAt?: number; paymentId?: string; settlementId?: string; settlementStatus?:'credited'|'paid'; timeline: TimelineEvent[] }
+export interface Order { productId?:string; productTitle?:string; serviceType:ServiceType; task:string; team:TeamMember[]; startedAt?:number; demoElapsedMs?:number; taskCompleted?:boolean; id: string; bossId: string; bossName: string; gameId: string; gameName: string; region: string; playerId?: string; playerName?: string; preferredPlayerId?: string; preferredPlayerName?: string; unitPrice: number; quantity: number; copies?:number; amount: number; commissionBps: number; earnings: number; status: OrderStatus; refundStatus: RefundStatus; refundReason?: string; refundAmount?: number; refundReviewNote?: string; note: string; createdAt: number; paidAt?: number; finishedAt?: number; paymentId?: string; settlementId?: string; settlementStatus?:'credited'|'paid'; timeline: TimelineEvent[] }
 export interface Settlement { id: string; playerId: string; playerName: string; orderIds: string[]; amount: number; status: 'pending' | 'credited' | 'paid'; createdAt: number; paidAt?: number }
 export interface Audit { id: string; at: number; actor: string; action: string; target: string; detail: string }
 export interface ClubSettings { name: string; commissionBps: number; unpaidTimeoutMinutes: number; announcement: string }
 export interface Database { schema: number; products?:Product[]; catalogRevision?:number; applications:Application[]; revision: number; games: Game[]; players: Player[]; orders: Order[]; settlements: Settlement[]; audit: Audit[]; settings: ClubSettings; sessions: Session[]; sequence: number }
 export interface OrderFilters { status?: string; gameId?: string; query?: string; scope?: 'mine' | 'hall' | 'all'; serviceType?:ServiceType; refund?: string }
-export interface OrderInput { productId?:string; serviceType?:ServiceType; task?:string; taskPrice?:number; gameId: string; region: string; playerId?: string; quantity: number; note?: string }
+export interface OrderInput { productId?:string; serviceType?:ServiceType; task?:string; taskPrice?:number; gameId: string; region: string; playerId?: string; quantity: number; copies?:number; note?: string }
 export interface Dashboard { todayRevenue: number; todayOrders: number; liveOrders: number; refundPending: number; onlinePlayers: number; totalPlayers: number; availablePlayers: number; unassigned: number; pendingPayout: number; revenueTrend: {label: string; revenue: number; orders: number}[]; gameDistribution: {name: string; orders: number; color: string}[]; recentOrders: Order[]; activity: Audit[] }
 export interface Wallet { total: number; pending: number; settled: number; available: number; orders: Order[]; settlements: Settlement[] }
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
@@ -36,7 +36,11 @@ export const isStaff = (role: Role) => ['admin','customer_service','finance'].in
 
 export const orderMembers=(o:Order):TeamMember[]=>o.team?.length?o.team:(o.playerId?[{playerId:o.playerId,name:o.playerName||''}]:[]);
 export const participantEarnings=(o:Order,playerId?:string)=>{const team=orderMembers(o);const index=team.findIndex(m=>m.playerId===playerId);return index<0?0:Math.floor(o.earnings/team.length)+(index<o.earnings%team.length?1:0);};
-export const orderSummary=(o:Order)=>o.serviceType==='escort'?o.task:`${o.quantity} 小时 · 按时长完成`;
+export const MAX_ORDER_COPIES=99;
+export const orderCopies=(o:Pick<Order,'copies'>)=>o.copies??1;
+export const totalOrderHours=(o:Pick<Order,'quantity'|'copies'>)=>o.quantity*orderCopies(o);
+export const orderUnits=(o:Order)=>`${o.serviceType==='escort'?o.task:o.quantity+'小时'} ×${orderCopies(o)}`;
+export const orderSummary=(o:Order)=>o.serviceType==='escort'?orderUnits(o):`${orderUnits(o)} · 共${totalOrderHours(o)}小时`;
 
 export const qualifiedGames=(p:Player,type:ServiceType):string[]=>p.qualifications.includes(type)?(p.qualificationGames?.[type]??[]):[];
 export const canServe=(p:Player,type:ServiceType,gameId:string)=>p.approved&&qualifiedGames(p,type).includes(gameId);

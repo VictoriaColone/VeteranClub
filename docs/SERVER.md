@@ -91,6 +91,19 @@ flowchart LR
 
 当前列表为有上限的轻量接口：订单／商品／申请最多 500 条，用户／服务档案最多 1000 条，明细超过该规模前需要改为分页。报酬总额、已到账总额及经营金额使用数据库聚合，不受明细列表上限截断；经营趋势按订单创建日归集，不能替代渠道账单对账。
 
+## 多份邀约
+
+`POST /v1/orders` 新增可选整数 `copies`（1～99，默认 1）。`quantity` 保留原含义：组队每份 1～8 小时，护航每份固定为 1 次约定任务。一次提交只创建一个订单，单价取服务端商品快照，总金额为 `unitPrice × quantity × copies`，服务费及预计收入按总金额计算。组队履约计时为 `quantity × copies` 小时；护航提交完成表示全部份数的任务均已达成。
+
+Flyway V5 只为现有订单补充 `copies=1`，不重算历史金额、时长、收入或结算记录。客户端未提供份数时保持一份的行为。订单列表、明细及后台导出均可看到份数，接单卡展示总预计收入。
+
+RDS 普通应用账号没有 `ALTER` 权限时，先由数据库管理入口在业务库执行下面两条 DDL，再发布新版服务。V5 会检查已有列和约束并登记迁移，应用账号不需要增加权限。
+
+```sql
+ALTER TABLE club_order ADD COLUMN copies INT NOT NULL DEFAULT 1;
+ALTER TABLE club_order ADD CONSTRAINT ck_order_copies CHECK(copies BETWEEN 1 AND 99);
+```
+
 ## 短信配置
 
 本地 `CLUB_DEVELOPMENT=true` 且 `SMS_PROVIDER=outbox` 才允许写收件箱；正式环境检测到此组合会拒绝启动。生产缺少配置或发送失败，返回 503，不创建可登录的验证码。
