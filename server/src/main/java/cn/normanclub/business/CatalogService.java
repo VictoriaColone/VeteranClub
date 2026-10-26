@@ -15,8 +15,10 @@ import static cn.normanclub.business.Rows.map;
 
 @Service
 public class CatalogService {
-    private final CatalogMapper db;private final OrderMapper orders;private final AuditService audit;private final JsonMapper json;private final Clock clock;
-    public CatalogService(CatalogMapper db,OrderMapper orders,AuditService audit,JsonMapper json,Clock clock){this.db=db;this.orders=orders;this.audit=audit;this.json=json;this.clock=clock;}
+    private final CatalogMapper db;private final OrderMapper orders;private final AuditService audit;private final JsonMapper json;private final Clock clock;private final PresenceUpdates updates;
+    public CatalogService(CatalogMapper db,OrderMapper orders,AuditService audit,JsonMapper json,Clock clock,PresenceUpdates updates){this.db=db;this.orders=orders;this.audit=audit;this.json=json;this.clock=clock;this.updates=updates;}
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter presence(Actor actor){return updates.subscribe(actor);}
+    public void statusChanged(){updates.changed();}
     public static final List<Map<String,Object>> GAMES=List.of(
         map("id","delta","name","三角洲","short","D","color","#90c6aa","tagline","明确目标，默契撤离","regions",List.of("国服")),
         map("id","valorant","name","无畏契约","short","V","color","#fa6c76","tagline","默契配合，漂亮拿下","regions",List.of("国服 · 华东","国服 · 华南","国服 · 华北")),
@@ -66,12 +68,12 @@ public class CatalogService {
             for(String game:strings(a.gameIds)){Qualification q=new Qualification();q.playerId=p.id;q.serviceType=a.serviceType;q.gameId=game;q.grantedAt=clock.millis();db.grant(q);}
             p.approved=true;List<String> games=new ArrayList<>(strings(p.gameIds));games.addAll(strings(a.gameIds));p.gameIds=encode(games.stream().distinct().toList());db.updateProfile(p);
         }else if(in.has("score"))a.score=in.integer("score",0,100);
-        a.status=status;a.reviewNote=note;a.reviewedAt=clock.millis();if(!status.equals("assessment"))a.activeKey=null;db.updateApplication(a);audit.record(actor.name(),"审核入驻申请",a.id,note);return applicationView(a);
+        a.status=status;a.reviewNote=note;a.reviewedAt=clock.millis();if(!status.equals("assessment"))a.activeKey=null;db.updateApplication(a);audit.record(actor.name(),"审核入驻申请",a.id,note);updates.changed();return applicationView(a);
     }
-    @Transactional public Map<String,Object> availability(Actor actor,Map<String,Object> body){Profile p=db.lockProfile(self(actor).id);p.available=new Inputs(body,"available").bool("available");if(p.available)require(p.approved&&!db.qualifications(p.id).isEmpty(),403,"尚未取得接单资格");db.updateProfile(p);audit.record(actor.name(),"接单状态",p.id,p.available?"开启接单":"休息中");return profileView(p);}
+    @Transactional public Map<String,Object> availability(Actor actor,Map<String,Object> body){Profile p=db.lockProfile(self(actor).id);p.available=new Inputs(body,"available").bool("available");require(p.approved&&!db.qualifications(p.id).isEmpty(),403,"请先通过入驻考核");if(p.available)require(orders.busy(p.id)==null,409,"当前有未完成服务，完成后自动恢复接单中");db.updateProfile(p);updates.changed();audit.record(actor.name(),"接单状态",p.id,p.available?"接单中":"服务中");return profileView(p);}
     @Transactional public Map<String,Object> updateProfile(Actor actor,String id,Map<String,Object> body){
         actor.roles("admin");Inputs in=new Inputs(body,"available","approved","price");Profile p=db.lockProfile(Inputs.identifier(id));require(p!=null,404,"成员不存在");
         if(in.has("approved")){require(!in.bool("approved"),400,"必须通过入驻考核授予资格");p.approved=false;p.available=false;db.revoke(p.id);}
-        if(in.has("available")){p.available=in.bool("available");if(p.available)require(p.approved,403,"尚未取得接单资格");}if(in.has("price"))p.price=in.integer("price",100,100000);db.updateProfile(p);audit.record(actor.name(),"更新成员",p.id,"资格、接单状态或服务单价已更新");return profileView(p);
+        if(in.has("available")){p.available=in.bool("available");if(p.available)require(p.approved,403,"尚未取得接单资格");}if(in.has("price"))p.price=in.integer("price",100,100000);db.updateProfile(p);updates.changed();audit.record(actor.name(),"更新成员",p.id,"资格、接单状态或服务单价已更新");return profileView(p);
     }
 }

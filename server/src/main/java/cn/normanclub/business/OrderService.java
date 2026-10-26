@@ -83,7 +83,7 @@ public class OrderService {
                 if(in.bool("approve")){r.status="processing";o.refundStatus="processing";tasks.enqueue("REFUND",r.id,clock.millis());event(o,a.name(),"退款审核通过，等待渠道处理",r.reviewNote);}else{r.status="rejected";o.refundStatus="rejected";ledger.credit(o);event(o,a.name(),"退款申请未通过",r.reviewNote);}payments.updateRefund(r);}
             default -> throw new ApiException(404,"接口不存在");
         }
-        require(db.update(o)==1,409,"订单已更新，请刷新后重试");pool.changed();audit.record(a.name(),"订单操作："+action,o.id,"状态："+o.status+"；售后："+o.refundStatus);return views.view(db.order(o.id));
+        require(db.update(o)==1,409,"订单已更新，请刷新后重试");pool.changed();services.statusChanged();audit.record(a.name(),"订单操作："+action,o.id,"状态："+o.status+"；售后："+o.refundStatus);return views.view(db.order(o.id));
     }
     private boolean frozen(Order o){return Set.of("pending","processing").contains(o.refundStatus);}
     private void owner(Order o,Actor a){a.user();require(o.bossId.equals(a.id()),403,"只能操作自己下单的订单");}

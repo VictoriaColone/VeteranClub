@@ -16,6 +16,7 @@ public class ClubController {
     @GetMapping("/club") ApiResponse<?> club(HttpServletRequest r){return ApiResponse.ok(map("name","诺曼部落","commissionBps",2000,"unpaidTimeoutMinutes",10,"announcement","一起出发。下单前请确认游戏区服、任务目标或服务时长。"),r);}
     @GetMapping("/catalog/games") ApiResponse<?> games(HttpServletRequest r){return ApiResponse.ok(CatalogService.GAMES,r);}
     @GetMapping("/players") ApiResponse<?> players(@AuthenticationPrincipal Actor a,@RequestParam(required=false)String gameId,HttpServletRequest r){return ApiResponse.ok(catalog.profiles(a,gameId),r);}
+    @GetMapping(value="/players/events",produces="text/event-stream") org.springframework.web.servlet.mvc.method.annotation.SseEmitter presence(@AuthenticationPrincipal Actor a,jakarta.servlet.http.HttpServletResponse response){response.setHeader("X-Accel-Buffering","no");return catalog.presence(a);}
     @GetMapping("/products") ApiResponse<?> products(@AuthenticationPrincipal Actor a,@RequestParam(defaultValue="public")String scope,HttpServletRequest r){return ApiResponse.ok(catalog.products(a,scope.equals("mine")),r);}
     @PostMapping("/products") ApiResponse<?> publish(@AuthenticationPrincipal Actor a,@RequestBody Map<String,Object> body,HttpServletRequest r){return ApiResponse.ok(catalog.publish(a,body),r);}
     @PatchMapping("/products/{id}") ApiResponse<?> active(@AuthenticationPrincipal Actor a,@PathVariable String id,@RequestBody Map<String,Object> body,HttpServletRequest r){return ApiResponse.ok(catalog.active(a,id,body),r);}

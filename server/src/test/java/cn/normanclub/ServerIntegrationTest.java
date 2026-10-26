@@ -199,6 +199,29 @@ class ServerIntegrationTest {
         Map<String,Object> body=map("productId",product.id,"gameId","delta","serviceType","escort","region","国服","quantity",1,"taskPrice",99999,"task","篡改任务");
         String first=(String)orders.create(buyer.actor,body,unique()).get("id"),second=(String)orders.create(buyer.actor,body,unique()).get("id");assertNotEquals(first,second);assertEquals(101,orderDb.order(first).amount);assertEquals("100w纯带出",orderDb.order(first).task);assertTrue(profiles.product(product.id).active);assertThrows(ApiException.class,()->orders.create(seller.actor,body,unique()));
     }
+    @Test void acceptingPublicOrPrivateOrderOccupiesSwitchUntilServiceCompletes(){
+        for(boolean invited:List.of(false,true)){
+            User member=qualified("escort"),buyer=user();Order order;
+            if(invited){Product product=catalog.publish(member.actor,map("gameId","delta","serviceType","escort","title","指定护航服务","description","验证邀请接单后的服务状态","price",12800,"task","100w纯带出"));order=orderDb.order((String)orders.create(buyer.actor,map("productId",product.id,"gameId","delta","serviceType","escort","region","国服","quantity",1),unique()).get("id"));}
+            else order=create(buyer,"escort",12800);
+            paid(buyer,order);orders.act(member.actor,order.id,"accept",Map.of());
+            assertEquals(true,catalog.profileView(profiles.profile(member.actor.playerId())).get("busy"));
+            assertEquals(409,assertThrows(ApiException.class,()->catalog.availability(member.actor,map("available",true))).status);
+            orders.act(member.actor,order.id,"start",Map.of());orders.act(member.actor,order.id,"finish",map("taskCompleted",true,"note","本次任务已经达成"));orders.act(buyer.actor,order.id,"confirm",Map.of());
+            var idle=catalog.profileView(profiles.profile(member.actor.playerId()));assertEquals(false,idle.get("busy"));assertEquals(true,idle.get("available"));
+        }
+    }
+    @Test void presenceStreamRequiresAuthenticationAndDeliversCommittedChanges()throws Exception{
+        assertEquals(401,request("GET","/v1/players/events",null,Map.of()).statusCode());
+        User watcher=user(),member=qualified("escort");
+        var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/v1/players/events")).GET();bearer(watcher).forEach(builder::header);
+        var response=HttpClient.newHttpClient().send(builder.build(),HttpResponse.BodyHandlers.ofInputStream());assertEquals(200,response.statusCode());assertTrue(response.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream"));
+        try(var input=new java.io.BufferedReader(new java.io.InputStreamReader(response.body()));var executor=Executors.newSingleThreadExecutor()){
+            assertEquals("event:presence",input.readLine());while(!input.readLine().isEmpty()){}
+            catalog.availability(member.actor,map("available",false));
+            var received=executor.submit(()->{String line;while((line=input.readLine())!=null)if(line.equals("event:presence"))return true;return false;});assertTrue(received.get(5,TimeUnit.SECONDS));
+        }
+    }
     @Test void orderCreationIsIdempotentAndRejectsRequestKeyReuse(){
         qualified("hourly");User u=user();Map<String,Object> body=map("gameId","delta","serviceType","hourly","region","国服","quantity",1);String key=unique();var one=orders.create(u.actor,body,key);var two=orders.create(u.actor,body,key);assertEquals(one.get("id"),two.get("id"));Map<String,Object> altered=new HashMap<>(body);altered.put("quantity",2);assertThrows(ApiException.class,()->orders.create(u.actor,altered,key));
     }
