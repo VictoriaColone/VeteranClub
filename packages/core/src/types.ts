@@ -10,7 +10,6 @@ export type Role = 'user' | 'boss' | 'player' | 'admin' | 'customer_service' | '
 export type OrderStatus = 'unpaid' | 'waiting' | 'accepted' | 'serving' | 'confirming' | 'completed' | 'cancelled';
 export type RefundStatus = 'none' | 'pending' | 'processing' | 'refunded' | 'rejected';
 export interface Session { token: string; role: Role; userId: string; name: string; playerId?: string; expiresAt?:number }
-export interface StaffChallenge { step:'totp'|'enroll'; challengeToken:string; expiresIn:number; secret?:string; otpauthUri?:string }
 export interface PaymentAttempt { id:string; orderId:string; channel:string; amount:number; currency:string; status:string; clientParams?:Record<string,unknown> }
 export interface Game { id: string; name: string; short: string; color: string; tagline: string; regions: string[] }
 export interface Player { id: string; userId: string; name: string; subtitle: string; gameIds: string[]; tags: string[]; rating: number; completed: number; price: number; color: string; avatar: string; available: boolean; busy?:boolean; approved: boolean; qualifications: ServiceType[]; qualificationGames?: Partial<Record<ServiceType,string[]>>; bio: string }

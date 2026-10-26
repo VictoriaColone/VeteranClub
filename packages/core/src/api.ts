@@ -1,5 +1,5 @@
 import { createMockTransport, ApiError } from './mock';
-import type { StaffChallenge, PaymentAttempt, ClubUser, Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
+import type { PaymentAttempt, ClubUser, Product, ProductInput, Application, ServiceType, ClubSettings, Dashboard, Game, Order, OrderFilters, OrderInput, Player, Role, Session, Settlement, Transport, Wallet, Audit } from './types';
 export class ClubApi {
   constructor(private transport:Transport=createMockTransport(),public session:Session|null=null){}
   private pendingRequests=new Map<string,string>();
@@ -14,8 +14,7 @@ export class ClubApi {
   currentSession(){return this.request<Session>('GET','/v1/auth/session');}
   sendSms(phone:string){return this.request<{expiresIn:number;retryAfter:number;delivery:string}>('POST','/v1/auth/sms/send',{phone});}
   async smsLogin(phone:string,code:string){const session=await this.request<Session>('POST','/v1/auth/sms/login',{phone,code});this.session=session;return session;}
-  staffLogin(username:string,password:string){return this.request<StaffChallenge>('POST','/v1/auth/staff/login',{username,password});}
-  async verifyStaff(challengeToken:string,code:string){const session=await this.request<Session>('POST','/v1/auth/staff/verify',{challengeToken,code});this.session=session;return session;}
+  async staffLogin(username:string,password:string){const session=await this.request<Session>('POST','/v1/auth/staff/login',{username,password});this.session=session;return session;}
   paymentChannels(){return this.request<{channel:string;enabled:boolean;message:string}[]>('GET','/v1/payments/channels');}
   createPayment(orderId:string,channel:string){return this.createIdempotent<PaymentAttempt>(`/v1/orders/${orderId}/payment-attempts`,{channel});}
   payment(id:string){return this.request<PaymentAttempt>('GET',`/v1/payments/${id}`);}
@@ -52,7 +51,7 @@ export function requestKey(){return `req_${Date.now().toString(36)}_${Math.rando
 export function createAcceptanceTransport(baseUrl:string,audience:'user'|'staff'='user'):Transport {
   const http=createHttpTransport(baseUrl,audience);
   return <T>(method:string,path:string,body?:unknown,token?:string,idempotencyKey?:string)=>{
-    if(path==='/v1/auth/mock-login')path='/v1/auth/sms/login/acceptance';
+    if(path==='/v1/auth/mock-login'){if(audience==='staff')throw new ApiError(403,'管理后台请使用账号密码登录');path='/v1/auth/sms/login/acceptance';}
     else if(method==='POST'&&/^\/v1\/orders\/[A-Za-z0-9_-]+\/(pay|demo-elapse)$/.test(path))path=path.replace('/v1/orders/','/v1/acceptance/orders/');
     return http<T>(method,path,body,token,idempotencyKey);
   };

@@ -5,6 +5,7 @@ umask 077
 [[ ${EUID} -eq 0 ]] || exit 1
 bundle=${1:?Specify the release archive}
 release=${2:?Specify a new release identifier}
+manager_hash=${3:-}
 [[ $release =~ ^[A-Za-z0-9_-]{7,64}$ ]] || exit 1
 [[ -f /etc/systemd/system/norman-acceptance.service.d/20-rds.conf ]] || exit 1
 base=/opt/norman-acceptance
@@ -14,7 +15,11 @@ mkdir "$base/releases/$release"
 tar --extract --gzip --file "$bundle" --directory "$base/releases/$release" --no-same-owner
 [[ -f "$base/releases/$release/norman-acceptance.jar" && -f "$base/releases/$release/web/mobile/index.html" && -f "$base/releases/$release/web/admin/index.html" ]] || exit 1
 chmod -R u=rwX,go=rX "$base/releases/$release"
-ln -sfn "$base/releases/$release" "$base/current"
+if [[ -n $manager_hash ]]; then
+  bash "$base/releases/$release/deploy/rds/enable-manager.sh" "$manager_hash"
+fi
+ln -s "$base/releases/$release" "$base/current-$release-next"
+mv -Tf "$base/current-$release-next" "$base/current"
 systemctl restart norman-acceptance
 ready=false
 for attempt in {1..45}; do

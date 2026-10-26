@@ -1,6 +1,6 @@
 # Norman Club 服务端
 
-当前按项目所有者要求暂缓用户与员工登录接入，本机 `4180` 已恢复免登录 Mock 演示。运行 `npm run demo` 可重新构建并启动该入口；用户自动进入体验账号，后台自动进入模拟管理员。真实接口、数据库和认证代码保留，以下 HTTP 联调步骤待物料齐备后再启用。演示预览与 HTTP 预览共用端口，切换前需先停止正在运行的预览。
+管理后台使用账号密码登录，当前最高权限账号为 `norman_app_manager`。账号初始化仅在服务器本地读取私有 BCrypt 哈希文件，源码不包含默认密码。用户端仍可使用免登录体验身份，短信及支付继续保留接口。后台已经移除员工演示身份和切换入口。
 
 服务端已按此前的低成本方案实现：**Java 21、Spring Boot 4.1.2、Spring Security、MyBatis 4.1.0、MySQL 8.4、Flyway**。一个应用处理用户端和员工后台，会话、验证码、限流与后台任务使用同一个 MySQL；不需要 Redis 或消息队列。
 
@@ -20,8 +20,7 @@ npm run preview:http        # 用户端和后台：http://127.0.0.1:4180/
 - 用户端：`http://127.0.0.1:4180/mobile/`
 - 员工后台：`http://127.0.0.1:4180/admin/`
 - 健康检查：`http://127.0.0.1:8080/actuator/health`
-- 初始管理员账号：`owner`。本机初始密码在 `.local/admin-password`，不要提交仓库、发送给他人或用于生产。
-- 首次员工登录必须将页面上的密钥添加至身份验证器，并验证六位动态码。密钥只会在未绑定验证器的密码认证步骤中返回，登录成功后不再显示。
+- 当前云端管理账号：`norman_app_manager`；管理员密码不在公开仓库中。登录只需要账号和密码，无身份验证器步骤。
 - 本地短信收件箱在 `.local/sms-outbox.jsonl`，权限 600。`delivery=development-outbox` **不发送真实短信**；填写测试手机号、点击获取验证码后读取此文件，再填写六位码登录。
 - 新手机号自动创建普通用户，无组队／护航资格。先从“我的”提交申请，再由后台客户管理审核和录入考核成绩。
 - 新真实库不灌入 Demo 的虚构订单或付费记录；初始商品目录为空。发布商品需要先取得对应资格。
@@ -44,14 +43,16 @@ npm run preview:http        # 用户端和后台：http://127.0.0.1:4180/
 
 分别执行两次 `openssl rand -base64 32`，配置不同的 `CLUB_ENCRYPTION_KEY` 与 `CLUB_HASH_KEY`；这些密钥需要稳定保存，不能每次启动重新生成。应用启动时通过 Flyway 自动创建和校验表结构，禁止生产 `clean`。SQL 位于 `server/src/main/resources/db/migration/`。
 
-没有默认员工密码，也没有公开的管理员注册接口。首次初始化与验证器恢复均是服务器本地维护操作：
+没有默认员工密码，也没有公开的管理员注册接口。首次初始化与密码恢复均是服务器本地维护操作：
 
 ```bash
-npm run server:bootstrap -- owner
-npm run server:reset-staff -- owner
+npm run server:bootstrap -- norman_app_manager
+npm run server:reset-staff -- norman_app_manager
 ```
 
-命令会在交互终端询问新密码。自动化初始化可用权限 **600** 的 `CLUB_PASSWORD_FILE` 提供一次性密码文件；不要把密码放在命令行参数中。`reset-staff` 重置密码及验证器，并撤销旧会话，必须由有服务器管理权限的人执行。
+命令会在交互终端询问新密码。自动化初始化可用权限 **600** 的 `CLUB_PASSWORD_FILE` 提供一次性密码文件；不要把密码放在命令行参数中。`reset-staff` 重置密码，并撤销旧会话，必须由有服务器管理权限的人执行。
+
+也可通过 `CLUB_MANAGER_PASSWORD_HASH_FILE` 指定仅文件所有者可读的 BCrypt cost=12 哈希文件，用于首次创建 `norman_app_manager`（admin 权限）。初始化对已有账号不覆盖密码，应用重启也不会恢复旧密码。不要把密码或哈希放进公开仓库、构建后的前端或命令行参数。云端配置脚本见 `deploy/rds/enable-manager.sh`。密码规则为至少 8 位、包含字母和数字、最多 72 UTF-8 字节。
 
 管理员也可调用 `POST /v1/admin/staff` 创建客服、财务或其他管理员，`PATCH /v1/admin/staff/{id}` 停用员工。员工停用立即撤销会话，且不能停用最后一位管理员。当前 PC 页面提供登录、认证、退出；员工创建和停用接口供运维/API 工具使用，尚未新增员工管理页面。
 
@@ -74,7 +75,7 @@ flowchart LR
 | 模块 | 实现 |
 |---|---|
 | 用户登录 | 内部用户 ID 与手机号身份分离；验证码单次使用、五分钟有效、五次错误失效；新用户没有任何接单资格 |
-| 员工登录 | 独立员工表，BCrypt 12，密码＋TOTP；首次绑定验证器；员工权限每个请求从库读取 |
+| 员工登录 | 独立员工表，BCrypt 12，账号密码登录；没有免密员工入口；员工权限每个请求从库读取 |
 | 会话 | H5 使用 HttpOnly Cookie＋CSRF；小程序使用随机 Bearer，数据库只保存 token 哈希；退出、停用立即撤销 |
 | 商品 | 两类资格按游戏分别授权；长期可重复预约；离线、忙碌仍可预约；价格、任务与成员采用服务端快照 |
 | 订单 | 整数分；固定 20% 服务费；按单保存费率和价格；创建请求号幂等；待支付 10 分钟关闭 |
@@ -146,7 +147,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yml run --rm -it --no-de
   --spring.main.web-application-type=none --club.command=bootstrap-admin --club.username=owner
 ```
 
-在交互终端本人输入新密码。验证器丢失时可将命令改为 `--club.command=reset-staff`，会撤销原会话并要求重新绑定。
+在交互终端本人输入新密码。忘记密码时可将命令改为 `--club.command=reset-staff`，会撤销原会话并要求重新登录。
 
 配置证书放在 `deploy/certs/fullchain.pem`、`privkey.pem`；证书不在仓库中。Nginx 将 `/api/` 转发给 API，并覆盖真实 IP 头。只信任 Nginx 的固定容器地址；如果调整子网，必须同步调整 `TRUSTED_PROXIES`。当前电脑没有 Docker，Compose 文件和镜像构建尚未在本机运行验证；JAR、实际 MySQL 和本机代理已独立验证。
 

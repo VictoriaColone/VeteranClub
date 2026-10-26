@@ -1,7 +1,5 @@
 package cn.normanclub.auth;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,30 +52,17 @@ public class AuthService {
         return issue(user.id,user.name,"user",p.id,bearer);
     }
     @Transactional
-    public Map<String,Object> staffLogin(String username,String password,String ip) {
-        require(username!=null&&username.matches("[A-Za-z0-9_.-]{3,64}")&&password!=null&&password.length()<=128,401,"账号或密码不正确");
-        abuse.limit("staff-ip",ip,20,60_000);abuse.limit("staff-username",username.toLowerCase(Locale.ROOT),10,300_000);
-        AuthMapper.Staff staff=db.staffByUsername(username.toLowerCase(Locale.ROOT));
-        boolean correct=passwords.matches(password,staff==null?dummyHash:staff.passwordHash);
+    public Login staffLogin(String username,String password,String ip) {
+        require(username!=null&&username.matches("[A-Za-z0-9_.-]{3,64}")&&password!=null&&password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=72,401,"账号或密码不正确");
+        String normalized=username.toLowerCase(Locale.ROOT);
+        abuse.limit("staff-ip",ip,20,60_000);abuse.limit("staff-username",normalized,10,300_000);
+        AuthMapper.Staff staff=db.staffByUsername(normalized);
+        String verifiedHash=staff==null?dummyHash:staff.passwordHash;
+        boolean correct=passwords.matches(password,verifiedHash);
         if(!correct||staff==null||staff.disabled){abuse.loginFailed(ip);throw new cn.normanclub.common.ApiException(401,"账号或密码不正确");}
-        // Lock the account so concurrent password steps cannot leave multiple enrollment secrets valid.
-        staff=db.lockStaff(staff.id);db.clearChallenges(staff.id);
-        String token=Crypto.token(),secret=staff.totpCipher==null?Totp.secret():null;
-        AuthMapper.Challenge challenge=new AuthMapper.Challenge();challenge.tokenHash=Crypto.sha256(token);challenge.staffId=staff.id;challenge.setupCipher=secret==null?null:crypto.encrypt(secret);challenge.expiresAt=clock.millis()+300_000;db.insertChallenge(challenge);
-        return map("step",secret==null?"totp":"enroll","challengeToken",token,"expiresIn",300,"secret",secret,
-            "otpauthUri",secret==null?null:"otpauth://totp/"+URLEncoder.encode("Norman Club:"+staff.username,StandardCharsets.UTF_8)+"?secret="+secret+"&issuer=Norman%20Club&algorithm=SHA1&digits=6&period=30");
-    }
-    @Transactional(noRollbackFor=cn.normanclub.common.ApiException.class)
-    public Login verifyStaff(String token,String code,String ip) {
-        require(token!=null&&token.matches("[A-Za-z0-9_-]{43}"),401,"验证会话无效或已过期");
-        abuse.limit("totp-ip",ip,30,60_000);AuthMapper.Challenge c=db.challenge(Crypto.sha256(token));
-        require(c!=null&&!c.consumed&&c.expiresAt>clock.millis()&&c.attempts<5,401,"验证会话无效或已过期");
-        AuthMapper.Staff staff=db.lockStaff(c.staffId);require(staff!=null&&!staff.disabled,401,"账号暂不可用");
-        String secret=crypto.decrypt(c.setupCipher==null?staff.totpCipher:c.setupCipher);
-        long step=Totp.verify(secret,code,clock.millis(),staff.lastTotpStep);
-        if(step<0){c.attempts++;if(c.attempts>=5)c.consumed=true;db.updateChallenge(c);abuse.loginFailed(ip);throw new cn.normanclub.common.ApiException(401,"动态验证码不正确或已使用");}
-        db.totp(staff.id,crypto.encrypt(secret),step);c.consumed=true;db.updateChallenge(c);
-        audit.record(staff.name,"员工登录",staff.id,c.setupCipher==null?"密码与动态验证码验证成功":"已绑定动态验证器并登录");
+        staff=db.lockStaff(staff.id);require(staff!=null&&!staff.disabled&&Crypto.equal(verifiedHash,staff.passwordHash),401,"账号或密码不正确");
+        db.clearChallenges(staff.id);
+        audit.record(staff.name,"管理员登录",staff.id,"账号密码验证成功");
         return issue(staff.id,staff.name,staff.role,null,false);
     }
     Login issue(String id,String name,String role,String playerId,boolean bearer) {

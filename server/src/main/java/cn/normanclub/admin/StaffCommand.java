@@ -19,9 +19,9 @@ public class StaffCommand implements ApplicationRunner {
         char[] password;
         String file=env.getProperty("CLUB_PASSWORD_FILE");
         if(file!=null){Path path=Path.of(file);var permissions=Files.getPosixFilePermissions(path);if(permissions.stream().anyMatch(p->p.name().startsWith("GROUP_")||p.name().startsWith("OTHERS_")))throw new IllegalStateException("密码文件权限必须为 600");password=Files.readString(path).strip().toCharArray();}
-        else{if(System.console()==null)throw new IllegalStateException("请使用交互终端输入密码，或通过权限 600 的 CLUB_PASSWORD_FILE 提供");password=System.console().readPassword("设置员工密码（至少12位，包含字母和数字）: ");}
+        else{if(System.console()==null)throw new IllegalStateException("请使用交互终端输入密码，或通过权限 600 的 CLUB_PASSWORD_FILE 提供");password=System.console().readPassword("设置员工密码（至少8位，包含字母和数字）: ");}
         try{if(command.equals("bootstrap-admin"))staff.bootstrap(username,name,new String(password));else if(command.equals("reset-staff"))staff.resetLocally(username,new String(password));else throw new IllegalArgumentException("不支持的维护命令");}
         finally{Arrays.fill(password,'\0');}
-        System.out.println("员工认证配置完成。首次登录需要绑定动态验证器；未输出密码。");
+        System.out.println("员工认证配置完成。使用账号密码登录；未输出密码。");
     }
 }

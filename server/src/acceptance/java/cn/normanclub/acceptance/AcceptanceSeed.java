@@ -6,26 +6,24 @@ import org.springframework.boot.*;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import cn.normanclub.auth.*;
 import cn.normanclub.business.*;
 import cn.normanclub.business.Rows.*;
-import cn.normanclub.security.Crypto;
 
 @Component
 public class AcceptanceSeed implements ApplicationRunner {
-    private final AuthMapper auth;private final CatalogMapper catalog;private final Clock clock;private final PasswordEncoder passwords;private final TransactionTemplate tx;
-    public AcceptanceSeed(AcceptanceGuard guard,AuthMapper auth,CatalogMapper catalog,Clock clock,PasswordEncoder passwords,PlatformTransactionManager manager){this.auth=auth;this.catalog=catalog;this.clock=clock;this.passwords=passwords;tx=new TransactionTemplate(manager);}
+    private final AuthMapper auth;private final CatalogMapper catalog;private final Clock clock;private final TransactionTemplate tx;
+    public AcceptanceSeed(AcceptanceGuard guard,AuthMapper auth,CatalogMapper catalog,Clock clock,PlatformTransactionManager manager){this.auth=auth;this.catalog=catalog;this.clock=clock;tx=new TransactionTemplate(manager);}
     public void run(ApplicationArguments args){tx.executeWithoutResult(status->{
         user("u-boss","p0","林序",List.of());
         user("u-hourly","p-hourly","小屿",List.of("hourly"));
         user("u-escort","p-escort","凛",List.of("escort"));
         user("u-player","p1","岚",List.of("hourly","escort"));
         user("u-p7","p7","远山",List.of("hourly","escort"));
+        // Retire legacy password-free staff accounts and revoke any saved browser sessions.
         for(String role:List.of("admin","customer_service","finance")){
-            String id="acceptance-"+role;if(auth.staff(id)!=null)continue;
-            AuthMapper.Staff s=new AuthMapper.Staff();s.id=id;s.username=id;s.name=switch(role){case "admin"->"验收管理员";case "finance"->"验收财务";default->"验收客服";};
-            s.role=role;s.passwordHash=passwords.encode(Crypto.token());s.lastTotpStep=-1;s.createdAt=clock.millis();auth.insertStaff(s);
+            String id="acceptance-"+role;if(auth.staff(id)==null)continue;
+            auth.disableStaff(id,true);auth.revoke(id,"staff");auth.clearChallenges(id);
         }
     });}
     private void user(String uid,String pid,String name,List<String> types){

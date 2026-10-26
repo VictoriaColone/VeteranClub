@@ -24,11 +24,17 @@ class AcceptanceIntegrationTest {
         }
     }
     @LocalServerPort int port;
+    @org.springframework.beans.factory.annotation.Autowired cn.normanclub.admin.StaffService staff;
+    @org.springframework.beans.factory.annotation.Autowired cn.normanclub.auth.AuthMapper authDb;
+    @org.springframework.beans.factory.annotation.Autowired cn.normanclub.auth.AuthService auth;
+    @org.springframework.beans.factory.annotation.Autowired cn.normanclub.acceptance.AcceptanceSeed seed;
+    static final String STAFF_PASSWORD="AcceptanceOnly_42Password";
+    void manager(){staff.provisionManager(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(STAFF_PASSWORD));}
     @org.springframework.beans.factory.annotation.Autowired cn.normanclub.payment.PaymentService payments;
     @org.springframework.beans.factory.annotation.Autowired AcceptanceGuard guard;
     final JsonMapper json=new JsonMapper();
     HttpClient client;Map<String,String> csrfTokens;
-    @BeforeEach void client(){client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();csrfTokens=new HashMap<>();}
+    @BeforeEach void client(){manager();client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();csrfTokens=new HashMap<>();}
     HttpResponse<String> request(String method,String path,String data,String audience)throws Exception{
         var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).header("Origin","http://127.0.0.1:4190").header("X-Client-Type","h5").header("X-Session-Audience",audience).header("Content-Type","application/json");
         String csrf=csrfTokens.get(audience);if(csrf!=null)builder.header("X-CSRF-Token",csrf);
@@ -36,7 +42,8 @@ class AcceptanceIntegrationTest {
         return client.send(builder.method(method,data==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(data)).build(),HttpResponse.BodyHandlers.ofString());
     }
     JsonNode login(String role,String user)throws Exception{
-        var response=request("POST","/v1/auth/sms/login/acceptance",json.writeValueAsString(Map.of("role",role,"accountId",user)),role.equals("user")?"user":"staff");assertEquals(200,response.statusCode(),response.body());
+        String audience=role.equals("user")?"user":"staff";
+        var response=role.equals("user")?request("POST","/v1/auth/sms/login/acceptance",json.writeValueAsString(Map.of("role",role,"accountId",user)),audience):request("POST","/v1/auth/staff/login",json.writeValueAsString(Map.of("username","norman_app_manager","password",STAFF_PASSWORD)),audience);assertEquals(200,response.statusCode(),response.body());
         for(String cookie:response.headers().allValues("Set-Cookie"))if(cookie.startsWith("norman-"+(role.equals("user")?"user":"staff")+"-csrf="))csrfTokens.put(role.equals("user")?"user":"staff",cookie.substring(cookie.indexOf('=')+1,cookie.indexOf(';')));
         return json.readTree(response.body()).path("data");
     }
@@ -67,9 +74,17 @@ class AcceptanceIntegrationTest {
         assertEquals(401,request("GET","/v1/orders",null,"user").statusCode());assertEquals("u-boss",login("user","u-boss").path("userId").asText());
         assertEquals(200,request("GET","/v1/products",null,"user").statusCode());assertEquals(403,request("GET","/v1/admin/users",null,"user").statusCode());
         assertEquals(403,request("POST","/v1/auth/sms/login/acceptance","{\"role\":\"user\",\"accountId\":\"other\"}","user").statusCode());
+        for(String role:List.of("admin","customer_service","finance"))assertEquals(403,request("POST","/v1/auth/sms/login/acceptance",json.writeValueAsString(Map.of("role",role)),"staff").statusCode());
+        assertEquals(401,request("GET","/v1/admin/users",null,"staff").statusCode());
         assertEquals("admin",login("admin","").path("role").asText());assertEquals(200,request("GET","/v1/admin/users",null,"staff").statusCode());
         var foreign=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/v1/auth/sms/login/acceptance")).header("Origin","https://evil.example.com").header("X-Client-Type","h5").header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString("{\"role\":\"admin\"}")).build();
         assertEquals(403,client.send(foreign,HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+    @Test void legacyDemoStaffSessionsAreRevokedOnStartup(){
+        var legacy=new cn.normanclub.auth.AuthMapper.Staff();legacy.id="acceptance-admin";legacy.username="acceptance-admin";legacy.name="旧演示管理员";legacy.role="admin";legacy.passwordHash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(STAFF_PASSWORD);legacy.createdAt=System.currentTimeMillis();legacy.lastTotpStep=-1;authDb.insertStaff(legacy);
+        var old=auth.staffLogin(legacy.username,STAFF_PASSWORD,"192.0.2.200");assertNotNull(auth.authenticate(old.token(),"staff",false));
+        seed.run(new org.springframework.boot.DefaultApplicationArguments(new String[0]));
+        assertTrue(authDb.staff(legacy.id).disabled);assertNull(auth.authenticate(old.token(),"staff",false));assertThrows(cn.normanclub.common.ApiException.class,()->auth.staffLogin(legacy.username,STAFF_PASSWORD,"192.0.2.200"));
     }
     @Test void escortFlowPersistsPaymentMembersAndAutomaticCreditWithoutRealMoney()throws Exception{
         login("user","u-boss");

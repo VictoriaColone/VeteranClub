@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Synthetic end-to-end smoke check; invoke only on the acceptance server itself."""
+import getpass
 import http.cookiejar
 import json
 import urllib.request
@@ -25,6 +26,8 @@ def request(method, path, body=None):
 def login(role='user', user='u-boss'):
     global audience
     audience = 'user' if role == 'user' else 'staff'
+    if audience == 'staff':
+        return request('POST', '/v1/auth/staff/login', {'username': 'norman_app_manager', 'password': getpass.getpass('Manager password (hidden): ')})
     return request('POST', '/v1/auth/sms/login/acceptance', {'role': role, 'accountId': user})
 
 login()

@@ -23,8 +23,7 @@ public class AcceptanceSessionController {
             require(Set.of("u-boss","u-hourly","u-escort","u-player","u-p7").contains(id),403,"只能切换验收账号");
             var user=db.user(id);require(user!=null&&!user.disabled,403,"验收账号不可用");login=auth.issue(id,user.name,"user",catalog.byUser(id).id,false);
         }else{
-            require(Set.of("admin","customer_service","finance").contains(role),400,"验收身份不支持");var staff=db.staff("acceptance-"+role);require(staff!=null&&!staff.disabled,403,"验收员工不可用");
-            login=auth.issue(staff.id,staff.name,staff.role,null,false);
+            throw new ApiException(403,"管理后台请使用账号密码登录");
         }
         audit.record("验收环境","切换测试身份",String.valueOf(login.session().get("userId")),"仅服务器本机入口，不使用短信或验证器");cookies.cookies(login,response);return ApiResponse.ok(login.session(),request);
     }

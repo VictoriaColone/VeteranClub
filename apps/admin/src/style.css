@@ -21,3 +21,5 @@
 .onboarding-actions .el-button + .el-button { margin-left: 0; }
 /* Keep page scrolling inside tables instead of beneath the fixed sidebar. */
 .main-shell { min-width: 0; }
+
+.auth-loading{min-height:100vh;display:grid;place-items:center;background:var(--club-bg);color:var(--club-secondary);font-size:14px}

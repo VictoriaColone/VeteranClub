@@ -13,14 +13,14 @@
 ## 认证与会话
 
 - 用户验证码六位随机数、五分钟有效、最多五次错误、单次使用。库中保存 HMAC，不保存明文验证码。
-- 员工密码 BCrypt cost=12，长度至少 12 位并包含字母和数字，最多 72 UTF-8 字节。每个员工独立账号，全部角色均要求 TOTP。
-- TOTP 使用 RFC 6238，六位码、30 秒窗口，允许相邻一步时钟偏移；已使用的时间步不可重放。挑战五分钟、最多五次错误，首次绑定密钥加密保存。
+- 员工密码 BCrypt cost=12，长度至少 8 位并包含字母和数字，最多 72 UTF-8 字节。当前管理账号使用密码登录，未配置公开注册或免密员工入口。
 - 会话为随机 256 位不透明 token，数据库只保存哈希。H5 的用户／员工各自使用 HttpOnly、Secure、SameSite=Strict Cookie；修改请求必须提供和会话匹配的 CSRF token。登录等匿名接口另有 Origin 白名单和 JSON Content-Type 保护。
 - 小程序使用独立的用户 Bearer，会话保存在小程序本地；员工不提供 Bearer 登录。H5 HTTP 模式不将认证 token 写入 LocalStorage。
+- 管理员初始化哈希从私有部署文件读取，不在公开代码、前端或审计日志中保存。旧验收管理员、客服、财务账号被停用并撤销会话，验收登录接口拒绝所有员工角色。
 - 用户会话七天；员工最长八小时、30 分钟无活动失效。退出或账号停用立即撤销；没有不可撤销的长效 JWT。
-- 手机号 AES-256-GCM 加密，HMAC 索引，员工用户目录仅返回脱敏手机号；验证器密钥同样加密。加密与 HMAC 使用不同密钥。
+- 手机号 AES-256-GCM 加密，HMAC 索引，员工用户目录仅返回脱敏手机号。加密与 HMAC 使用不同密钥。
 
-密码存储选择遵循 [Spring Security 密码存储说明](https://docs.spring.io/spring-security/reference/features/authentication/password-storage.html)；CSRF 机制依据 [Spring Security CSRF 说明](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)，此项目在自定义数据库会话过滤器中实现 cookie / bearer 两类请求的区别。TOTP 测试包含 [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238) 的校验向量。
+密码存储选择遵循 [Spring Security 密码存储说明](https://docs.spring.io/spring-security/reference/features/authentication/password-storage.html)；CSRF 机制依据 [Spring Security CSRF 说明](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)，此项目在自定义数据库会话过滤器中实现 cookie / bearer 两类请求的区别。
 
 ## 防刷与 IP 封禁
 
@@ -30,7 +30,7 @@
 | 单手机号发送上限 | 每小时 5 次、每天 10 次 |
 | 单 IP 短信发送 | 每小时 30 次 |
 | 全站短信预算上限 | 每天 200 条，可通过环境调整 |
-| 单 IP 验证码／TOTP 校验 | 每分钟 30 次 |
+| 单 IP 验证码 校验 | 每分钟 30 次 |
 | 员工密码登录 | 单 IP 每分钟 20 次；单账号每五分钟 10 次 |
 | 失败自动封禁 | 单 IP 15 分钟内超过 20 次失败，封禁 30 分钟 |
 | API 请求 | 单 IP 每分钟 1200 次，单账号每分钟 300 次 |

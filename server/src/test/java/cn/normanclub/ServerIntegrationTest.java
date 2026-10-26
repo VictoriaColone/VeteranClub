@@ -104,13 +104,39 @@ class ServerIntegrationTest {
     @Test void totpUsesRfc6238VectorAndRejectsReplay(){
         String secret="GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";assertEquals("287082",Totp.code(secret,59/30));long step=Totp.verify(secret,"287082",59_000,-1);assertEquals(1,step);assertEquals(-1,Totp.verify(secret,"287082",59_000,step));
     }
-    @Test void staffEnrollmentCookieCsrfLogoutAndMfaReplay()throws Exception{
-        String username=staffAccount("admin");var first=request("POST","/v1/auth/staff/login",map("username",username,"password",PASSWORD),Map.of("X-Session-Audience","staff"));assertEquals(200,first.statusCode());JsonNode challenge=data(first);assertEquals("enroll",challenge.path("step").asText());String secret=challenge.path("secret").asText(),token=challenge.path("challengeToken").asText(),code=Totp.code(secret,clock.millis()/30_000);
-        var login=request("POST","/v1/auth/staff/verify",map("challengeToken",token,"code",code),Map.of("X-Session-Audience","staff"));assertEquals(200,login.statusCode());assertEquals("",data(login).path("token").asText());assertTrue(login.headers().allValues("set-cookie").stream().anyMatch(c->c.contains("HttpOnly")&&c.contains("SameSite=Strict")));
-        assertEquals(401,request("GET","/v1/auth/session",null,Map.of("X-Session-Audience","staff")).statusCode());
-        Map<String,String> headers=cookieHeaders(login,true),without=cookieHeaders(login,false);assertEquals(200,request("GET","/v1/admin/users",null,headers).statusCode());assertEquals(403,request("POST","/v1/admin/staff",Map.of(),without).statusCode());
+    @Test void staffPasswordLoginUsesCookieCsrfAndRevocableSession()throws Exception{
+        String username=staffAccount("admin");
+        var wrong=request("POST","/v1/auth/staff/login",map("username",username,"password","wrong-password"),Map.of());
+        var missing=request("POST","/v1/auth/staff/login",map("username","missing_"+unique(),"password","wrong-password"),Map.of());
+        assertEquals(401,wrong.statusCode());assertEquals(401,missing.statusCode());assertEquals(json.readTree(wrong.body()).path("message"),json.readTree(missing.body()).path("message"));
+        var login=request("POST","/v1/auth/staff/login",map("username",username,"password",PASSWORD),Map.of("X-Session-Audience","staff"));assertEquals(200,login.statusCode());
+        assertEquals("admin",data(login).path("role").asText());assertEquals("",data(login).path("token").asText());assertFalse(login.body().contains("passwordHash"));assertFalse(login.body().contains("secret"));
+        assertTrue(login.headers().allValues("set-cookie").stream().anyMatch(c->c.contains("HttpOnly")&&c.contains("SameSite=Strict")));
+        assertNotEquals(PASSWORD,authDb.staffByUsername(username).passwordHash);assertTrue(authDb.staffByUsername(username).passwordHash.startsWith("$2a$12$"));
+        assertEquals(401,request("GET","/v1/admin/users",null,Map.of("X-Session-Audience","staff")).statusCode());
+        Map<String,String> headers=cookieHeaders(login,true),without=cookieHeaders(login,false);
+        assertEquals(200,request("GET","/v1/admin/users",null,headers).statusCode());assertEquals(403,request("POST","/v1/admin/staff",Map.of(),without).statusCode());
         assertEquals(200,request("POST","/v1/auth/logout",null,headers).statusCode());assertEquals(401,request("GET","/v1/auth/session",null,headers).statusCode());
-        var again=data(request("POST","/v1/auth/staff/login",map("username",username,"password",PASSWORD),Map.of("X-Session-Audience","staff")));assertEquals(401,request("POST","/v1/auth/staff/verify",map("challengeToken",again.path("challengeToken").asText(),"code",code),Map.of("X-Session-Audience","staff")).statusCode());
+        assertEquals(401,request("GET","/v1/admin/users",null,headers).statusCode());
+    }
+    @Test void staffSessionsExpireAndDisabledAccountsCannotLogin(){
+        String username=staffAccount("admin");var login=auth.staffLogin(username,PASSWORD,"192.0.2.101");assertNotNull(auth.authenticate(login.token(),"staff",false));
+        clock.advance(1_800_001);assertNull(auth.authenticate(login.token(),"staff",false));
+        var again=auth.staffLogin(username,PASSWORD,"192.0.2.101");staff.disable(operator,authDb.staffByUsername(username).id,true);
+        assertNull(auth.authenticate(again.token(),"staff",false));assertThrows(ApiException.class,()->auth.staffLogin(username,PASSWORD,"192.0.2.101"));
+    }
+    @Test void staffLoginThrottlesPersistAfterFailedTransactions(){
+        String username=staffAccount("admin");
+        for(int attempt=0;attempt<10;attempt++){int index=attempt;assertEquals(401,assertThrows(ApiException.class,()->auth.staffLogin(username,"bad-password","198.51.100."+(index+1))).status);}
+        assertEquals(429,assertThrows(ApiException.class,()->auth.staffLogin(username,PASSWORD,"198.51.100.22")).status);
+    }
+    @Test void managerProvisioningIsIdempotentAndAcceptsConfiguredPasswordPolicy(){
+        String hash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(PASSWORD);
+        staff.provisionManager(hash);var manager=authDb.staffByUsername("norman_app_manager");assertEquals("admin",manager.role);assertFalse(manager.disabled);
+        staff.provisionManager(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode("OtherPassword_42"));
+        assertEquals(hash,authDb.staffByUsername("norman_app_manager").passwordHash);
+        assertThrows(ApiException.class,()->staff.provisionManager("plaintext-is-not-a-hash"));
+        assertDoesNotThrow(()->StaffService.validatePassword("Example_42"));assertThrows(ApiException.class,()->StaffService.validatePassword("short1"));
     }
     @Test void userCannotCallAdminApisOrSwitchAudience()throws Exception{User u=user();assertEquals(403,request("GET","/v1/admin/users",null,bearer(u)).statusCode());Map<String,String> h=new HashMap<>(bearer(u));h.put("X-Session-Audience","staff");assertEquals(401,request("GET","/v1/admin/users",null,h).statusCode());}
     @Test void disablingAccountRevokesExistingSessions()throws Exception{User u=user();admin.disableUser(operator,u.actor.id(),true);assertNull(auth.authenticate(u.token,"user",true));assertEquals(401,request("GET","/v1/orders",null,bearer(u)).statusCode());}
