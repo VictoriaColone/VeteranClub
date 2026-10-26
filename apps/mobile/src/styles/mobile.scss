@@ -65,9 +65,7 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .personal-income-amount{font-size:28px;color:var(--club-primary);font-weight:600;margin-top:12px}
 .personal-income .detail-row{font-size:10px;align-items:flex-start}.personal-income .detail-row>text:last-child{overflow-wrap:anywhere;max-width:70%;text-align:right}
 
-.hall-heading .section-hint{display:block;margin-top:5px}.hall-filter-button{display:flex;align-items:center;gap:6px;min-height:36px;padding:7px 12px;border:1px solid var(--club-border);border-radius:20px;color:var(--club-secondary);font-size:12px;white-space:nowrap}.hall-filter-button.active{color:var(--club-primary);border-color:#d9fd8840;background:var(--club-green-bg)}.hall-filter-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;color:var(--club-secondary);margin:-3px 0 16px}.hall-filter-summary button{color:var(--club-purple);padding:6px 0;white-space:nowrap}.hall-filter-actions{display:flex;gap:12px;margin-top:28px}.hall-filter-actions .secondary{flex:1}.hall-filter-actions .primary{flex:2}
-
-.hall-filter-controls{display:flex;align-items:center;gap:12px;flex-shrink:0}.hall-filter-toggle{display:flex;align-items:center;gap:6px;min-height:36px;color:var(--club-secondary);font-size:11px;white-space:nowrap}.hall-filter-switch{display:flex;align-items:center;width:30px;height:18px;padding:2px;border:1px solid #555a6c;border-radius:12px;background:#303442}.hall-filter-switch>view{width:12px;height:12px;border-radius:50%;background:#bfc2ce;transition:transform .15s}.hall-filter-switch.on{background:var(--club-primary);border-color:var(--club-primary)}.hall-filter-switch.on>view{transform:translateX(12px);background:#26301b}.hall-filter-summary>text{min-width:0;overflow-wrap:anywhere}.filter-save-hint{display:block;margin-top:6px}
+.hall-heading .section-hint{display:block;margin-top:5px}
 
 .seller-state{white-space:nowrap}.seller-state.busy{color:#d6b1f2}.seller-state.offline,.seller-state.unknown{color:var(--club-muted)}.service-availability{padding:13px 14px;margin:14px 0;border:1px solid var(--club-border);border-radius:12px;background:var(--club-surface)}.service-availability>view{font-size:12px;font-weight:600;color:#b8cd9e}.service-availability>text{display:block;font-size:11px;line-height:1.8;margin-top:5px;color:var(--club-secondary)}.service-availability.busy>view{color:#d6b1f2}.service-availability.offline>view,.service-availability.unknown>view{color:var(--club-secondary)}
 
@@ -109,9 +107,7 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .profile-panel{margin-top:20px}
 
 .hall-scope-switch{margin-top:0}
-.hall-game-filter{margin-bottom:22px}
-.hall-type-filter{flex-wrap:wrap;margin-bottom:18px}
-.hall-type-filter>button{flex:1;min-width:0;white-space:nowrap}
+
 .hall-product-name{margin-top:10px;font-size:11px;color:var(--club-secondary)}
 
 .profile-products-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
