@@ -93,6 +93,19 @@ class AcceptanceIntegrationTest {
         login("user","u-hourly");String hourlyHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertTrue(hourlyHall.contains(id));assertFalse(hourlyHall.contains(invited));
         login("user","u-player");String ownHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertFalse(ownHall.contains(id));
     }
+    @Test void memberStatusIsReadOnlyOverHttp()throws Exception{
+        login("user","u-hourly");
+        var before=json.readTree(request("GET","/v1/players",null,"user").body()).path("data");JsonNode original=null;
+        for(var player:before)if(player.path("id").asText().equals("p-hourly"))original=player;
+        assertNotNull(original);boolean available=original.path("available").asBoolean();
+        for(boolean value:List.of(false,true)){
+            var denied=request("POST","/v1/player/availability",json.writeValueAsString(Map.of("available",value)),"user");assertEquals(403,denied.statusCode(),denied.body());
+            assertEquals(403,request("PATCH","/v1/admin/players/p-hourly",json.writeValueAsString(Map.of("available",value)),"user").statusCode());
+        }
+        var after=json.readTree(request("GET","/v1/players",null,"user").body()).path("data");JsonNode current=null;
+        for(var player:after)if(player.path("id").asText().equals("p-hourly"))current=player;
+        assertNotNull(current);assertEquals(available,current.path("available").asBoolean());
+    }
     @Test void copiedOrdersExposeOneTotalInTheCorrectHall()throws Exception{
         login("user","u-boss");Map<String,String> ids=new HashMap<>();
         for(String type:List.of("hourly","escort")){

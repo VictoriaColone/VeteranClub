@@ -21,7 +21,7 @@ test('同一类型可同时申请不同游戏，通过后可继续申请；新�
  assert.equal(f.profile().qualifications.filter(t=>t==='hourly').length,1);
 });
 for(const game of ['delta','valorant','lol'])for(const type of ['hourly','escort'] as const)test(`仅三角洲双资格：${game} ${type} 发布、抢单、派单按游戏独立校验`,()=>{
- const f=fixture();f.approve(f.apply('hourly','delta'));f.approve(f.apply('escort','delta'));f.call(f.user,'POST','/v1/player/availability',{available:true});
+ const f=fixture();f.approve(f.apply('hourly','delta'));f.approve(f.apply('escort','delta'));f.call(f.admin,'PATCH',`/v1/admin/players/${f.user.playerId}`,{available:true});
  const g=f.server.read().games.find(g=>g.id===game)!;
  const order=f.call<Order>(f.buyer,'POST','/v1/orders',{productId:`club-${type}-${game}`,serviceType:type,gameId:game,region:g.regions[0],quantity:1});f.call(f.buyer,'POST',`/v1/orders/${order.id}/pay`);
  const publish=()=>f.call(f.user,'POST','/v1/products',{serviceType:type,gameId:game,title:'专项资格测试商品',description:'仅允许通过该游戏该类型考核后发布。',price:6800,task:'100w纯带出'});

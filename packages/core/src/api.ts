@@ -34,6 +34,7 @@ export class ClubApi {
   applications(){return this.request<Application[]>('GET','/v1/applications');}
   apply(input:{serviceType:ServiceType;gameIds:string[];introduction:string}){return this.request<Application>('POST','/v1/applications',input);}
   reviewApplication(id:string,input:{status:'assessment'|'approved'|'rejected';score?:number;note:string}){return this.request<Application>('POST',`/v1/admin/applications/${id}/review`,input);}
+  /** @deprecated 接单状态仅由平台管理；旧用户写接口始终返回403。 */
   availability(available:boolean){return this.request<Player>('POST','/v1/player/availability',{available});}
   wallet(){return this.request<Wallet>('GET','/v1/player/wallet');}
   dashboard(){return this.request<Dashboard>('GET','/v1/admin/dashboard');}

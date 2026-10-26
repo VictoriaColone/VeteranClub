@@ -39,7 +39,7 @@
 | POST | `/v1/orders/:id/cancel` | 取消未支付订单 | 订单下单用户／客服／管理员 |
 | POST | `/v1/orders/:id/refund` | `{amount,reason?}`，原因选填，空白时进入售后审核 | 订单下单用户／客服／管理员 |
 | POST | `/v1/orders/:id/review-refund` | `{approve,note}` | 财务／管理员 |
-| POST | `/v1/player/availability` | `{available}` | 当前成员 |
+| POST | `/v1/player/availability` | 旧用户写入口已禁用，返回403；状态由平台管理 | 无用户写权限 |
 | GET | `/v1/player/wallet` | 报酬明细及批次记录 | 当前成员 |
 | GET | `/v1/admin/users` | 全部注册用户（含未下单用户），按 userId 关联订单与入驻申请 | 员工 |
 | PATCH | `/v1/admin/players/:id` | `{price?,available?,approved:false?}`；资格授予必须通过考核接口 | 管理员 |

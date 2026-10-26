@@ -4,7 +4,7 @@
 |---|---|
 | 产品版本 | **1.0.1**，前后端共用起始版本 |
 | 发布状态 | **未正式发布**；云端部署是内部验收 |
-| 核对日期 / 源码 | 2026-10-26，Asia/Shanghai / `33695dc` |
+| 核对日期 / 初始源码基线 | 2026-10-26，Asia/Shanghai / `33695dc` |
 | 数据库结构 | Flyway **V5**；迁移编号和产品版本独立 |
 | 配套手册 | [前端：页面与入口](FRONTEND.md) · [数据库：表与字段](DATABASE.md) |
 
@@ -113,9 +113,9 @@ flowchart LR
 | `PATCH /v1/products/{id}` | 商品本人；`active` 布尔 | 上下架；重新上架要检查入驻资格；不支持直接改价格、说明等字段 |
 | `GET /v1/applications` | 已登录 | 用户看本人、员工看全部申请；返回审核进度和反馈 |
 | `POST /v1/applications` | 用户；`serviceType,gameIds,introduction` | 单次 `gameIds` 只能一个游戏；介绍 10～500 字；同一项目有待审申请或已通过时拒绝重复 |
-| `POST /v1/admin/applications/{id}/review` | 管理员；`status,score?,note` | `assessment/approved/rejected`；说明 2～500 字；通过需先进入考核且成绩 60～100；只授予该游戏该类型 |
-| `POST /v1/player/availability` | 已入驻本人；`available` | 设置接单意愿；true 时不能有占单；false 在 UI 表示服务中/暂停新接单，不自动下架商品 |
-| `PATCH /v1/admin/players/{id}` | 管理员；`price?,available?,approved?` | 调整档案建议价/意愿；`approved` 只能传 false，撤销全部入驻项目；不能通过 true 绕过考核 |
+| `POST /v1/admin/applications/{id}/review` | 管理员；`status,score?,note` | `assessment/approved/rejected`；说明 2～500 字；通过需先进入考核且成绩 60～100；只授予该游戏该类型；新成员接单需平台管理员在成员管理中开启 |
+| `POST /v1/player/availability` | 旧兼容写入口，已禁用 | 已登录调用始终403；用户只可查询，不能自行改变接单状态；管理员使用下行接口 |
+| `PATCH /v1/admin/players/{id}` | 管理员；`price?,available?,approved?` | 调整档案建议价/平台接单启用标志；`approved` 只能传 false，撤销全部入驻项目；不能通过 true 绕过考核 |
 | `GET /v1/player/wallet` | 用户 | 本人报酬总额、待转账/已到账金额、完成订单和收入记录；API 存在，前端无独立钱包底部 tab |
 
 游戏：`delta` 三角洲（国服）；`valorant` 无畏契约（国服·华东/华南/华北）；`lol` 英雄联盟（艾欧尼亚/峡谷之巅/黑色玫瑰）。组队 `hourly`，护航 `escort`。
@@ -197,7 +197,7 @@ stateDiagram-v2
 
 售后单独为 `none → pending → processing → refunded`，或 `pending → rejected`。pending/processing 冻结接单、开始、提交、确认和记账。渠道确认全额退款变 cancelled 并释放容量；部分退款保留履约状态，按原费率重算预计收入。已有收入记账后禁止新退款，尚无结算冲账流程。
 
-订单用数据库行锁和 `version` 条件更新；成员容量用 `busy_slot.player_id` 主键约束。负责人和副手都占容量。完成后释放 busy_slot，若原 `available=true` 则显示恢复接单中；手动设为 false 的成员不会凭空被打开接单意愿。
+订单用数据库行锁和 `version` 条件更新；成员容量用 `busy_slot.player_id` 主键约束。负责人和副手都占容量。完成后释放 busy_slot，若原 `available=true` 则显示恢复接单中；被平台设为 false 的成员不会被订单完成自动启用。成员没有修改 available 的权限，空闲和忙碌时调用旧状态写接口均返回403。
 
 ## 接口目录：支付与退款预留
 
@@ -314,5 +314,6 @@ stateDiagram-v2
 | 日期 | 内容 | 验证与部署 |
 |---|---|---|
 | 2026-10-26 | 建立接口与能力基线；含按游戏/类型入驻、公共/私有单、占单、协作、售后、自动记账、密码登录、SSE 和多份邀约 | `33695dc`；39项普通后端测试、8项验收 HTTP 测试通过；云端已迁移V5并部署 `uat-20261026-order-copies-02`，健康UP；真实资金与微信真机未验收 |
+| 2026-10-26 | 用户接单状态写接口改为403；只允许平台管理员通过既有成员管理接口设置available，订单busy_slot机制保持 | 无数据库迁移；40项后端+9项验收HTTP测试通过；部署uat-20261026-platform-status-01健康UP，线上旧用户写入口403且原值不变；仍为1.0.1 |
 
 以后记录格式：`日期｜接口/规则变化｜权限和数据影响｜所需迁移｜测试及回退边界`。当前无已正式发布历史版本。

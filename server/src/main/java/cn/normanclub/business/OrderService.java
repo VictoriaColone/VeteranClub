@@ -93,7 +93,7 @@ public class OrderService {
     public void event(Order o,String actor,String label,String note){Event e=new Event();e.id=Crypto.id("ev_");e.orderId=o.id;e.at=clock.millis();e.actor=actor;e.label=label;e.note=note;db.event(e);}
     @Transactional public Map<String,Object> grab(Actor a,Map<String,Object> body){
         a.user();Inputs in=new Inputs(body,"serviceType","gameId");String type=CatalogService.type(in.text("serviceType",1,12)),game=in.optional("gameId",24);if(!game.isEmpty())CatalogService.game(game);
-        Profile p=catalog.profile(a.playerId());require(p!=null&&p.available&&p.approved&&db.busy(p.id)==null,409,"请取得资格、开启接单并完成当前服务");
+        Profile p=catalog.profile(a.playerId());require(p!=null&&p.available&&p.approved&&db.busy(p.id)==null,409,"请确认已入驻、平台已开启接单且当前无未完成服务");
         for(Order candidate:pool.orders())if(!candidate.bossId.equals(a.id())&&type.equals(candidate.serviceType)&&(game.isEmpty()||game.equals(candidate.gameId))&&services.qualified(p,type,candidate.gameId)){
             Order current=db.lock(candidate.id);
             if(current==null||!current.status.equals("waiting")||current.paidAt==null||current.preferredPlayerId!=null||current.playerId!=null||frozen(current))continue;

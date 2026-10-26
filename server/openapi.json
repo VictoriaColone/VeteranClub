@@ -1634,18 +1634,8 @@
     },
     "/v1/player/availability": {
       "post": {
-        "summary": "接单状态",
+        "summary": "旧用户状态修改入口（已禁用）",
         "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Envelope"
-                }
-              }
-            }
-          },
           "400": {
             "description": "参数校验",
             "content": {
@@ -1667,7 +1657,7 @@
             }
           },
           "403": {
-            "description": "无权限或封禁",
+            "description": "接单状态由平台管理，用户不能修改",
             "content": {
               "application/json": {
                 "schema": {
@@ -1747,7 +1737,9 @@
               }
             }
           }
-        }
+        },
+        "description": "接单状态由平台控制。用户仅可查询状态；该旧写入口对已登录调用始终返回403，管理员使用 PATCH /v1/admin/players/{id}。",
+        "deprecated": true
       }
     },
     "/v1/orders": {

@@ -70,7 +70,7 @@ public class CatalogService {
         }else if(in.has("score"))a.score=in.integer("score",0,100);
         a.status=status;a.reviewNote=note;a.reviewedAt=clock.millis();if(!status.equals("assessment"))a.activeKey=null;db.updateApplication(a);audit.record(actor.name(),"审核入驻申请",a.id,note);updates.changed();return applicationView(a);
     }
-    @Transactional public Map<String,Object> availability(Actor actor,Map<String,Object> body){Profile p=db.lockProfile(self(actor).id);p.available=new Inputs(body,"available").bool("available");require(p.approved&&!db.qualifications(p.id).isEmpty(),403,"请先通过入驻考核");if(p.available)require(orders.busy(p.id)==null,409,"当前有未完成服务，完成后自动恢复接单中");db.updateProfile(p);updates.changed();audit.record(actor.name(),"接单状态",p.id,p.available?"接单中":"服务中");return profileView(p);}
+    public Map<String,Object> availability(Actor actor,Map<String,Object> body){throw new ApiException(403,"接单状态由平台管理，用户不能修改");}
     @Transactional public Map<String,Object> updateProfile(Actor actor,String id,Map<String,Object> body){
         actor.roles("admin");Inputs in=new Inputs(body,"available","approved","price");Profile p=db.lockProfile(Inputs.identifier(id));require(p!=null,404,"成员不存在");
         if(in.has("approved")){require(!in.bool("approved"),400,"必须通过入驻考核授予资格");p.approved=false;p.available=false;db.revoke(p.id);}

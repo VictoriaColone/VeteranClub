@@ -75,7 +75,7 @@ class ServerIntegrationTest {
     String phone(){return "139"+String.format(Locale.ROOT,"%08d",SEQUENCE.incrementAndGet());}
     String unique(){return UUID.randomUUID().toString().replace("-","");}
     User user(){String phone=phone(),ip="198.51.100."+(SEQUENCE.get()%200+1);auth.sendCode(phone,ip);var login=auth.smsLogin(phone,sms.codes.get(phone),ip,true);return new User(auth.authenticate(login.token(),"user",true),login.token(),phone);}
-    User qualified(String type){User u=user();var application=catalog.apply(u.actor,map("serviceType",type,"gameIds",List.of("delta"),"introduction","这是独立考核测试申请，有丰富的协作经验。"));String id=(String)application.get("id");catalog.review(operator,id,map("status","assessment","note","资料核验通过，安排考核"));catalog.review(operator,id,map("status","approved","score",88,"note","专项考核记录核实通过"));catalog.availability(u.actor,map("available",true));return u;}
+    User qualified(String type){User u=user();var application=catalog.apply(u.actor,map("serviceType",type,"gameIds",List.of("delta"),"introduction","这是独立考核测试申请，有丰富的协作经验。"));String id=(String)application.get("id");catalog.review(operator,id,map("status","assessment","note","资料核验通过，安排考核"));catalog.review(operator,id,map("status","approved","score",88,"note","专项考核记录核实通过"));catalog.updateProfile(operator,u.actor.playerId(),map("available",true));return u;}
     Order create(User u,String type,int amount){
         Product item=new Product();item.id="fixture-"+unique();item.sellerType="club";item.sellerName="诺曼部落";item.gameId="delta";item.serviceType=type;item.title="测试商品";item.description="集成测试专用定价商品";item.price=type.equals("escort")?amount:6800;item.task=type.equals("escort")?"100w纯带出":"";item.active=true;item.createdAt=clock.millis();profiles.insertProduct(item);
         return orderDb.order((String)orders.create(u.actor,map("productId",item.id,"gameId","delta","serviceType",type,"region","国服","quantity",1,"note","集成测试服务需求"),unique()).get("id"));
@@ -149,7 +149,7 @@ class ServerIntegrationTest {
     void approveGame(String id){catalog.review(operator,id,map("status","assessment","note","该项资料审核通过"));catalog.review(operator,id,map("status","approved","score",90,"note","该游戏该服务专项考核通过"));}
     @Test void gameAndServiceAreIndependentAcrossApplicationHallAcceptAndAssignment(){
         User member=user(),buyer=user();String hourlyDelta=applyGame(member,"hourly","delta"),escortDelta=applyGame(member,"escort","delta"),hourlyValorant=applyGame(member,"hourly","valorant");
-        assertThrows(ApiException.class,()->applyGame(member,"hourly","delta"));approveGame(hourlyDelta);approveGame(escortDelta);catalog.availability(member.actor,map("available",true));
+        assertThrows(ApiException.class,()->applyGame(member,"hourly","delta"));approveGame(hourlyDelta);approveGame(escortDelta);catalog.updateProfile(operator,member.actor.playerId(),map("available",true));
         assertThrows(ApiException.class,()->applyGame(member,"hourly","delta"));
         assertThrows(ApiException.class,()->catalog.apply(member.actor,map("serviceType","escort","gameIds",List.of("valorant","lol"),"introduction","不能将多个游戏合在同一次考核中")));
         for(String game:List.of("delta","valorant","lol"))for(String type:List.of("hourly","escort")){
@@ -195,18 +195,30 @@ class ServerIntegrationTest {
         orders.act(buyer.actor,id,"refund",map("amount",100,"reason","退"));assertEquals("pending",orderDb.order(id).refundStatus);
     }
     @Test void productCanBeBookedRepeatedlyWhileOfflineAndCannotBeBoughtBySeller(){
-        User seller=qualified("escort"),buyer=user();Product product=catalog.publish(seller.actor,map("gameId","delta","serviceType","escort","title","长期任务护航","description","可以重复预约的个人护航服务","price",101,"task","100w纯带出"));catalog.availability(seller.actor,map("available",false));
+        User seller=qualified("escort"),buyer=user();Product product=catalog.publish(seller.actor,map("gameId","delta","serviceType","escort","title","长期任务护航","description","可以重复预约的个人护航服务","price",101,"task","100w纯带出"));catalog.updateProfile(operator,seller.actor.playerId(),map("available",false));
         Map<String,Object> body=map("productId",product.id,"gameId","delta","serviceType","escort","region","国服","quantity",1,"taskPrice",99999,"task","篡改任务");
         String first=(String)orders.create(buyer.actor,body,unique()).get("id"),second=(String)orders.create(buyer.actor,body,unique()).get("id");assertNotEquals(first,second);assertEquals(101,orderDb.order(first).amount);assertEquals("100w纯带出",orderDb.order(first).task);assertTrue(profiles.product(product.id).active);assertThrows(ApiException.class,()->orders.create(seller.actor,body,unique()));
     }
-    @Test void acceptingPublicOrPrivateOrderOccupiesSwitchUntilServiceCompletes(){
+    @Test void memberCannotChangeOwnPlatformControlledStatus(){
+        User member=qualified("escort");
+        for(boolean value:List.of(false,true)){
+            assertEquals(403,assertThrows(ApiException.class,()->catalog.availability(member.actor,map("available",value))).status);
+            assertTrue(profiles.profile(member.actor.playerId()).available);
+            assertThrows(ApiException.class,()->catalog.updateProfile(member.actor,member.actor.playerId(),map("available",value)));
+        }
+        catalog.updateProfile(operator,member.actor.playerId(),map("available",false));
+        assertEquals(403,assertThrows(ApiException.class,()->catalog.availability(member.actor,map("available",true))).status);
+        assertFalse(profiles.profile(member.actor.playerId()).available);
+        catalog.updateProfile(operator,member.actor.playerId(),map("available",true));assertTrue(profiles.profile(member.actor.playerId()).available);
+    }
+    @Test void acceptingPublicOrPrivateOrderUpdatesReadOnlyStatusUntilServiceCompletes(){
         for(boolean invited:List.of(false,true)){
             User member=qualified("escort"),buyer=user();Order order;
             if(invited){Product product=catalog.publish(member.actor,map("gameId","delta","serviceType","escort","title","指定护航服务","description","验证邀请接单后的服务状态","price",12800,"task","100w纯带出"));order=orderDb.order((String)orders.create(buyer.actor,map("productId",product.id,"gameId","delta","serviceType","escort","region","国服","quantity",1),unique()).get("id"));}
             else order=create(buyer,"escort",12800);
             paid(buyer,order);orders.act(member.actor,order.id,"accept",Map.of());
             assertEquals(true,catalog.profileView(profiles.profile(member.actor.playerId())).get("busy"));
-            assertEquals(409,assertThrows(ApiException.class,()->catalog.availability(member.actor,map("available",true))).status);
+            assertEquals(403,assertThrows(ApiException.class,()->catalog.availability(member.actor,map("available",true))).status);
             orders.act(member.actor,order.id,"start",Map.of());orders.act(member.actor,order.id,"finish",map("taskCompleted",true,"note","本次任务已经达成"));orders.act(buyer.actor,order.id,"confirm",Map.of());
             var idle=catalog.profileView(profiles.profile(member.actor.playerId()));assertEquals(false,idle.get("busy"));assertEquals(true,idle.get("available"));
         }
@@ -218,7 +230,7 @@ class ServerIntegrationTest {
         var response=HttpClient.newHttpClient().send(builder.build(),HttpResponse.BodyHandlers.ofInputStream());assertEquals(200,response.statusCode());assertTrue(response.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream"));
         try(var input=new java.io.BufferedReader(new java.io.InputStreamReader(response.body()));var executor=Executors.newSingleThreadExecutor()){
             assertEquals("event:presence",input.readLine());while(!input.readLine().isEmpty()){}
-            catalog.availability(member.actor,map("available",false));
+            catalog.updateProfile(operator,member.actor.playerId(),map("available",false));
             var received=executor.submit(()->{String line;while((line=input.readLine())!=null)if(line.equals("event:presence"))return true;return false;});assertTrue(received.get(5,TimeUnit.SECONDS));
         }
     }
