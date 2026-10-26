@@ -119,3 +119,11 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 .profile-products-toolbar>text{font-size:11px;color:var(--club-secondary)}
 .owned-product-meta{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:11px;line-height:1.8;color:var(--club-secondary)}
 .onboarding-sheet .qualification-explainer{margin:10px 0 18px}
+
+/* The catalog leads with the person or club providing the service. */
+.product-card .product-seller{gap:10px;margin:0 0 12px;color:var(--club-text)}
+.product-seller-body{flex:1;min-width:0}
+.product-card .product-seller .seller-avatar{width:36px;height:36px;border-radius:10px;font-size:18px}
+.product-card .product-seller .club-avatar{font-size:27px}
+.product-card .product-seller .product-title{font-size:17px;line-height:1.5;gap:7px}
+.product-card .product-seller .seller-state{display:block;margin:3px 0 0}
