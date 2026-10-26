@@ -1,5 +1,7 @@
 # Norman Club 服务端
 
+当前 **1.0.1 未正式发布**的完整接口、权限和能力清单见[后端维护手册](maintenance/BACKEND.md)，逐表字段见[数据库维护手册](maintenance/DATABASE.md)。本文继续保留启动、配置与部署指引。
+
 管理后台使用账号密码登录，当前最高权限账号为 `norman_app_manager`。账号初始化仅在服务器本地读取私有 BCrypt 哈希文件，源码不包含默认密码。用户端仍可使用免登录体验身份，短信及支付继续保留接口。后台已经移除员工演示身份和切换入口。
 
 服务端已按此前的低成本方案实现：**Java 21、Spring Boot 4.1.2、Spring Security、MyBatis 4.1.0、MySQL 8.4、Flyway**。一个应用处理用户端和员工后台，会话、验证码、限流与后台任务使用同一个 MySQL；不需要 Redis 或消息队列。

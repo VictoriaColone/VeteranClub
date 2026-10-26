@@ -7,7 +7,7 @@
 - 原轻量服务器原地升级至 2 核 4GB、50GB，并检查分区和文件系统已扩容。
 - 同地域 RDS MySQL 8.4 基础版，2 核 4GB、100GB；基础版是单节点，不提供高可用切换保障。暂不购买 Redis。
 - 轻量服务器与 RDS VPC 内网互通。RDS 白名单仅添加应用服务器的私网 IP `/32`，不添加全 VPC 或公网网段。
-- 创建 `norman_acceptance`、字符集 `utf8mb4`；创建普通账号 `norman_service`，仅授权该库读写（包含 Flyway 所需的 DDL）。管理账号不供应用使用。
+- 创建 `norman_acceptance`、字符集 `utf8mb4`；应用使用普通账号 `norman_service`，仅授权该库读写。当前账号没有 `ALTER` 权限；新增结构先由数据库管理入口执行 DDL，再由对应 Flyway 迁移核验/登记，V5 已支持预建字段和约束。管理账号不供应用使用，详见[数据库维护手册](maintenance/DATABASE.md)。
 - 对实际内网域名开启 SSL 和强制加密，从阿里云下载 CA 证书。将 PEM 和 JKS 分别安装到 `/etc/norman-rds-ca/rds-ca.pem`、`rds-ca.jks`，目录 755、文件 644。这些是公开 CA 证书，不是数据库密钥。
 
 参考[阿里云 SSL 配置文档](https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/configure-a-cloud-certificate-to-enable-ssl-encryption/)。官方 JKS 信任库密码为 `apsaradb`；应用验证证书和域名，不关闭证书校验。

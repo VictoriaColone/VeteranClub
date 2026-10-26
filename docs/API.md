@@ -1,6 +1,8 @@
 # API 契约：Mock 与真实服务
 
-真实服务已实现，见 [服务端说明](SERVER.md) 与 [OpenAPI 3.1](../server/openapi.json)。下文原有表格主要描述独立 Mock；真实服务器禁用 mock-login、模拟支付、demo-elapse、demo/reset，使用短信登录及员工密码＋TOTP。真实退款增加 `processing`，真实自动结算使用 `credited`（已记账、待转账），不把未接入支付视为付款成功。
+当前 **1.0.1 未正式发布**的接口维护基线见[后端手册](maintenance/BACKEND.md)，页面入口见[前端手册](maintenance/FRONTEND.md)。本文下方保留较多 Mock 和历史接入说明，不能将其中的旧 UI 或模拟路由当作当前真实服务能力。
+
+真实服务已实现，见 [服务端说明](SERVER.md) 与 [OpenAPI 3.1](../server/openapi.json)。下文原有表格主要描述独立 Mock；普通服务包禁用 mock-login、模拟支付、demo-elapse、demo/reset，使用短信登录及员工账号密码，当前不需要TOTP。独立验收包额外提供受限模拟接口。真实退款增加 `processing`，真实自动结算使用 `credited`（已记账、待转账），不把未接入支付视为付款成功。
 
 客户端：`packages/core/src/api.ts`。默认由 `createMockTransport` 处理异步方法调用，**浏览器 Network 面板不会出现这些 HTTP 请求**。切换 HTTP Transport 后才请求真实后端。
 

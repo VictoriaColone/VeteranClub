@@ -1,5 +1,13 @@
 # 诺曼部落 Norman Club
 
+## 自用维护文档（当前 1.0.1，未正式发布）
+
+- [前端手册](docs/maintenance/FRONTEND.md)：用户端与管理后台有哪些页面、UI、入口、权限显示和已接入能力。
+- [后端手册](docs/maintenance/BACKEND.md)：全部路由、参数、权限、业务规则，以及已实现/验收专用/待接入的能力。
+- [数据库手册](docs/maintenance/DATABASE.md)：24 张业务表和 Flyway 历史表，逐项字段、主键、唯一约束、外键、索引和业务意义。
+
+前后端未正式发布前均保持 **1.0.1**；日常改动追加开发记录，正式发布后才冻结版本快照。当前功能以以上三份手册为准，下文保留的早期演示流程可能包含已调整的入口；工程包号与产品功能版本分别管理。
+
 统一用户端同时支持 H5 与微信小程序，员工使用 PC 管理后台。用户端共用一套 uni-app 页面和业务模型。移动端使用 **uni-app + Vue 3 + TypeScript + uni-ui + Pinia**；管理后台使用 **Vue 3 + TypeScript + Element Plus + Pinia**。项目同时提供浏览器内 Mock 演示和真实服务端：**Java 21 + Spring Boot + Spring Security + MyBatis + MySQL 8.4 + Flyway**。真实接口版已接入用户短信登录、管理账号密码登录及数据库业务；支付渠道保持关闭，预留后续 SDK 接口。
 
 **管理后台已启用服务端账号密码登录**，使用 `norman_app_manager` 管理账号；密码通过私有部署文件初始化，不保存在前端或仓库。已移除管理员、客服和财务的免密演示身份与切换入口。刷新页面通过服务端 Cookie 恢复会话，退出立即撤销会话。
@@ -10,7 +18,7 @@
 
 真实服务启动、数据库、账号、短信与部署说明见 [服务端说明](docs/SERVER.md)，认证、限流与 IP 封禁见 [安全说明](docs/SECURITY.md)。内部验收的隔离与访问见 [验收说明](docs/ACCEPTANCE.md)。
 
-服务器现有 MySQL 的网页查表、SQL 查询、编辑与导入导出使用 [Adminer 数据库可视化管理](docs/DATABASE-UI.md)，无需另购数据库服务。
+云端数据库已迁至独立 RDS，使用 DMS 查表和执行 SQL；旧同机 MySQL 与 Adminer 已移除。当前结构与用途见[数据库维护手册](docs/maintenance/DATABASE.md)，迁移过程见 [RDS 说明](docs/RDS.md)。
 
 平台名称为“诺曼部落 Norman Club”。浏览器 Demo 内的人物、订单、收入为虚构样例；真实数据库不自动灌入这些数据。
 
@@ -127,7 +135,7 @@ docs/SECURITY.md       安全机制与运行约定
 
 ## H5 与微信小程序
 
-复制对应应用 `.env.example` 为 `.env.local`，设置 `VITE_API_MODE=http` 和 API 地址即可改用 HTTP Transport。真实 HTTP 模式已使用短信登录 / 员工密码与动态码登录，服务端负责身份、权限和事务；`mock-login` 仅存在于浏览器 Demo。
+复制对应应用 `.env.example` 为 `.env.local`，设置 `VITE_API_MODE=http` 和 API 地址即可改用 HTTP Transport。真实 HTTP 模式使用短信登录 / 员工账号密码登录，服务端负责身份、权限和事务；短信材料仍待配置，`mock-login` 仅存在于浏览器 Demo，内部验收使用独立受限接口。
 
 H5 与小程序登录、支付需要分别接入。内部 `userId` 独立于 `appid + openid`；不能直接使用公众号 OpenID 作为小程序 OpenID。
 
