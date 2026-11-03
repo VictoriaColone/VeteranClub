@@ -3,17 +3,39 @@
 | 项目 | 当前基线 |
 |---|---|
 | 对应产品版本 | **1.0.1**，前后端均未正式发布 |
-| 结构版本 | **Flyway V5**，和产品版本独立 |
-| 核对日期 / 初始源码基线 | 2026-10-26，Asia/Shanghai / `33695dc` |
+| 结构版本 | **Flyway V9**，2026-11-02云端已核验，和产品版本独立 |
+| 核对日期 / 初始源码基线 | 2026-11-02，Asia/Shanghai / `33695dc` |
 | 数据库 | MySQL 8.4；云端私有验收业务库 `norman_acceptance` |
-| 覆盖范围 | **24张业务表** + **1张Flyway迁移历史表**；逐项字段、主键、唯一约束、外键、索引和用途 |
+| 覆盖范围 | **31张业务表** + **1张Flyway迁移历史表**；逐项字段、主键、唯一约束、外键、索引和用途 |
 | 配套手册 | [前端](FRONTEND.md) · [后端](BACKEND.md) |
+
+## 2026-11-02 V9 钱包与公众号支付身份（已云端部署）
+
+新增7表，不导入任何真实用户或历史资金。管理员先执行 `deploy/rds/member-wallet-v9.sql`，再部署V9后端；普通应用账号保持DML权限。Java迁移存在完整表/索引时只验证并登记版本，缺列直接拒绝启动。迁移只增表，回退应用保留表与交易记录，已经存在真实钱包时不得直接回到旧结算逻辑。全部金额BIGINT整数分，时间BIGINT Unix毫秒；密文为AES-GCM，状态字符串由服务端状态机约束。
+
+| 表 / 主键 | 每项字段及意义 | 约束 / 索引 / 关联 |
+|---|---|---|
+| member_bank_account / player_id | player_id VARCHAR48 成员；holder_cipher VARCHAR1024 收款姓名密文；number_cipher VARCHAR1024 卡号密文；bank_name VARCHAR80 银行；last_four VARCHAR4 尾号；updated_at BIGINT 更新时间 | 每成员一张当前卡；逻辑关联service_profile.id。仅格式和填报一致性检查，不代表银行卡实名核验 |
+| wallet_income / income_id | income_id VARCHAR48 对应income_entry.id；order_id VARCHAR48 订单；player_id VARCHAR48 成员；fund_mode VARCHAR16 real/simulation；amount BIGINT 退款后收入；frozen BIGINT 提现冻结；paid BIGINT 累计已付款；release_at BIGINT 最早可提时间；blocked BOOLEAN 售后暂停 | CHECK amount/frozen/paid≥0且frozen+paid≤amount；索引(player_id,fund_mode,release_at)、order_id。仅新收入记账，历史不回填 |
+| withdrawal_request / id | id VARCHAR48 提现号；user_id、player_id VARCHAR48 归属；player_name VARCHAR80 名称快照；request_key VARCHAR80 幂等键；amount BIGINT 申请分；status VARCHAR24 pending/approved/processing/paid/rejected/cancelled/failed；holder_cipher、number_cipher VARCHAR1024 付款账户快照密文；bank_name VARCHAR80、last_four VARCHAR4；review_note VARCHAR500 审核说明；payment_reference VARCHAR100 银行实际流水；payment_note VARCHAR500 付款核对说明；created_at、updated_at BIGINT；paid_at BIGINT可空 到账登记时间 | UK(user_id,request_key)、payment_reference（可空）；CHECK amount>0；索引(player_id,created_at)、(status,created_at)。终态不可再次支出，不因后来换卡改变快照 |
+| withdrawal_allocation / (withdrawal_id,income_id) | withdrawal_id VARCHAR48 提现；income_id VARCHAR48 收入；amount BIGINT 本次分配分 | 联合PK防同一分配重复，CHECK amount>0；用于撤销解冻或付款核销；服务事务校验关联，不设物理FK |
+| wallet_entry / id | id VARCHAR48 流水；player_id VARCHAR48；fund_mode VARCHAR16；kind VARCHAR24 credit收入/refund冲减/freeze冻结/unfreeze解冻/paid付款；reference_id VARCHAR48 关联收入或提现；amount BIGINT 变动金额（退款负数，其余按kind解释，冻结不减total）；created_at BIGINT | UK(kind,reference_id)防重复记账，索引(player_id,created_at)。余额以wallet_income聚合，不能直接把全部流水金额相加算余额 |
+| wechat_payment_identity / (user_id,app_id) | user_id VARCHAR48 用户；app_id VARCHAR32 公众号；openid_cipher VARCHAR1024 公众号openid密文；created_at BIGINT 绑定/更新时间 | 联合PK；由同一登录会话的公众号OAuth生成，客户端不能直接上传openid；注销删除 |
+| wechat_oauth_state / state_hash | state_hash VARCHAR64 SHA256一次性随机state；user_id VARCHAR48；session_hash VARCHAR64 会话摘要；order_id VARCHAR48 订单；expires_at BIGINT 5分钟过期；consumed BOOLEAN 已消费 | PK防碰撞，消费CAS并校验用户/会话/有效期；过期清理，注销删除；不保存OAuth code或AppSecret |
+
+默认新收入等待24小时，模拟支付只进simulation，不参与可提/已付余额。真实退款和提现需锁同一成员档案，多成员按ID排序，阻止“已退又提”。完整付款账户只允许已审核申请在二次密码验证后短时展示。
 
 ## 版本与维护方式
 
 未正式发布前，数据库对应的产品功能版本保持 **1.0.1**。数据库结构每次变更使用新的 Flyway 迁移编号，不能修改已执行迁移的历史含义，也不能把V5理解为产品5.0。新增字段或约束时在本文更新表结构，并在文末记录“日期、迁移编号、业务意义、历史数据处理、发布顺序”。正式发布时和前后端手册一起冻结到 `docs/releases/1.0.1/`；下一产品版本由所有者指定。
 
-本文结构来自仓库 V1～V5 迁移、Mapper 与 Service。云端在本次文档建立前已核验到V5。本次整理没有改库、导出业务数据或读取/保存账号口令。行数、用户名称和某笔订单是否存在是运行数据，不作为产品版本快照。
+本文结构来自仓库 V1～V9 迁移、Mapper 与 Service。文档初建时云端为V5；2026-10-27已核验云端迁移到V7；V6增加联系方式密文，V7增加成员抽佣及订单快照标志。旧订单不重算，旧成员快照不回填。文档不导出业务数据或保存账号口令。行数、用户名称和某笔订单是否存在是运行数据，不作为产品版本快照。
+
+## 2026-10-31 V8 身份登记与账号安全
+
+V8为club_user增加7个可空字段，为sms_code增加purpose，不新增业务表、不导入身份数据。旧用户的身份及密码均为NULL，不能推定已成年；已入驻豁免只按当前批准状态和有效资格判断。未接权威身份数据源，字段只表示用户填报。
+
+上线顺序：先运行 `deploy/rds/user-identity-v8.sql` 的新增字段/唯一索引DDL（数据库管理员权限），再部署V8后端登记Flyway历史，最后使用配套前端；应用普通账号不增加ALTER权限。Java迁移兼容管理员预建字段及索引。结构可向后兼容旧应用，回退应用不删除新字段或身份信息；旧应用不执行新增下单门槛，故功能回退前须评估准入影响。密钥变更须规划重新加密/重建HMAC索引，不能直接替换环境密钥。
 
 ## 先理解主键、唯一键和关联
 
@@ -54,6 +76,9 @@
 | V3 `club_products.sql` | 商品user_id/player_id允许NULL；新增seller_type及组合约束；预置三个游戏×两种官方商品 | 官方没有虚构注册用户；初始组队6800分/小时、护航12800分/份，当前价格以实际行数据为准 |
 | V4 `V4__Per_game_applications.java` | 拆分历史进行中的多游戏申请为单游戏申请，active_key按用户:类型:游戏 | 已处理历史和已授予权限保留；并未新增一张游戏表 |
 | V5 `V5__Order_copies.java` | 订单新增copies默认1与1～99的CHECK；支持管理员预建DDL后应用登记迁移 | 不重算历史quantity、金额、收入或结算 |
+| V6 `V6__Order_contacts.java` | 订单新增两个可空的加密联系方式字段，支持管理员预建DDL | 历史订单留空，不改金额/数量；先DDL、后服务端、再前端 |
+| V7 `V7__Member_commission.java` | 成员默认抽佣、订单新旧模式标志、入队费率快照及范围约束 | 旧单FALSE、旧成员NULL；先管理员预建DDL，应用再登记V7；旧金额及结算不变 |
+| V8 `V8__User_identity.java` | club_user身份密文/Hash/提交与同意/密码Hash/注销字段；sms_code用途 | 旧用户全部NULL，无默认成年/默认密码；证件HMAC唯一，先管理员DDL后应用登记；旧验证码需重发 |
 
 SQL迁移位于 [resources/db/migration](../../server/src/main/resources/db/migration/)，Java迁移位于 [java/db/migration](../../server/src/main/java/db/migration/)。
 
@@ -123,9 +148,17 @@ flowchart LR
 | `name` | `VARCHAR(60)` | 非空；未设默认 | — | 用户显示名称。 |
 | `disabled` | `BOOLEAN` | 非空；默认`FALSE` | — | 账号是否停用；停用时撤销 user 会话。 |
 | `created_at` | `BIGINT` | 非空；未设默认 | — | 用户创建时间。 |
+| `real_name_cipher` | `TEXT` | 可空；NULL | — | AES-GCM加密的用户填报真实姓名，非展示昵称。V8新增。 |
+| `id_number_cipher` | `TEXT` | 可空；NULL | — | AES-GCM加密的规范化居民身份证号；出生日期仅在服务端解密计算年龄。V8新增。 |
+| `id_number_hash` | `VARCHAR(64)` | 可空；NULL | UK | 带resident-id前缀的HMAC-SHA256，专用于去重；不能反查明文。V8新增。 |
+| `identity_submitted_at` | `BIGINT` | 可空；NULL | — | 身份信息提交时间，不等于权威核验通过时间。V8新增。 |
+| `identity_consent_version` | `VARCHAR(24)` | 可空；NULL | — | 用户主动同意的信息处理说明版本，当前2026-10-31。V8新增。 |
+| `password_hash` | `VARCHAR(200)` | 可空；NULL | — | 用户Bcrypt12密码Hash；旧号为空，通过短信设置，不与员工密码混用。V8新增。 |
+| `closed_at` | `BIGINT` | 可空；NULL | — | 注销时间；与disabled配合，已注销不得后台重新启用。V8新增。 |
 
 数据库约束与索引：
 
+- `uk_user_id_number(id_number_hash)`：唯一证件绑定，NULL允许多行；Bitmap仅预筛，唯一索引兜底。注销清空身份字段与Hash以释放绑定。
 - 主键已单独列出；外键实现可能隐式建立支撑索引，实际索引名以 `SHOW INDEX` 为准。
 
 <a id="login-identity"></a>
@@ -221,6 +254,8 @@ flowchart LR
 | `expires_at` | `BIGINT` | 非空；未设默认 | — | 验证码到期时间，发送后5分钟。 |
 | `consumed` | `BOOLEAN` | 非空；默认`FALSE` | — | 是否已使用/失效；成功登录不能再次使用。 |
 
+| `purpose` | `VARCHAR(16)` | 非空；默认`login` | — | V8新增，login/register/reset/close；验证码Hash绑定用途，不能跨流程使用。 |
+
 数据库约束与索引：
 
 - 主键已单独列出；外键实现可能隐式建立支撑索引，实际索引名以 `SHOW INDEX` 为准。
@@ -305,10 +340,11 @@ flowchart LR
 | `tags` | `VARCHAR(500)` | 非空；未设默认 | — | 档案标签 JSON 数组文本。 |
 | `rating` | `DECIMAL(4,2)` | 非空；默认`5` | — | 档案评分，当前没有完整评价提交/自动更新体系。 |
 | `completed` | `INT` | 非空；默认`0` | — | 档案历史完成量，当前不是随每单自动维护的可信统计。 |
-| `price` | `INT` | 非空；默认`6800` | — | 档案建议小时价，单位分；实际购买使用 product.price。 |
+| `price` | `INT` | 非空；默认`6800` | — | 兼容的档案建议小时价，后台不再编辑；实际购买使用成员发布的product.price。 |
+| `commission_bps` | `INT` | 非空；默认`2000` | CHECK | V7新增；管理员设置的成员平台抽佣，0～10000基点，2000=20%；加入订单时复制快照。 |
 | `color` | `VARCHAR(12)` | 非空；未设默认 | — | 头像/档案颜色，例如十六进制色值。 |
 | `avatar` | `VARCHAR(12)` | 非空；未设默认 | — | 头像字形/短标识，当前不是上传图片 URL。 |
-| `available` | `BOOLEAN` | 非空；默认`FALSE` | — | 平台接单启用标志，仅管理员能设置，打手无权修改；false 在用户端显示服务中/暂停接新单，不代表设备离线。 |
+| `available` | `BOOLEAN` | 非空；默认`FALSE` | — | 平台接单启用标志，仅管理员能设置，打手无权修改；false 且无占单时显示暂停接单，不代表设备离线。 |
 | `approved` | `BOOLEAN` | 非空；默认`FALSE` | — | 是否启用认证档案；false 时已有授权不能用于新发布/接单。 |
 | `bio` | `VARCHAR(500)` | 非空；未设默认 | — | 长介绍。 |
 | `created_at` | `BIGINT` | 非空；未设默认 | — | 档案创建时间。 |
@@ -317,6 +353,7 @@ flowchart LR
 
 - `FOREIGN KEY(user_id) REFERENCES club_user(id)`。
 - `CONSTRAINT ck_profile_price CHECK(price BETWEEN 100 AND 100000)`。
+- `CONSTRAINT ck_profile_commission CHECK(commission_bps BETWEEN 0 AND 10000)`（V7）。
 - `user_id` 单列唯一约束。
 - 主键已单独列出；外键实现可能隐式建立支撑索引，实际索引名以 `SHOW INDEX` 为准。
 
@@ -434,9 +471,10 @@ flowchart LR
 | `player_id` | `VARCHAR(48)` | 可空；未设默认 | — | 实际接单负责人；等待接单时为NULL，不等同指定目标。 |
 | `player_name` | `VARCHAR(60)` | 可空；未设默认 | — | 实际负责人名称快照。 |
 | `unit_price` | `INT` | 非空；未设默认 | — | 商品单价快照，单位分。 |
-| `quantity` | `INT` | 非空；未设默认 | — | 每份组队小时数1～8；护航每份为1。 |
+| `quantity` | `INT` | 非空；未设默认 | — | 新组队总小时数1～8；护航固定1；旧组队仍需乘历史copies得到履约总时长。 |
 | `amount` | `INT` | 非空；未设默认 | — | 订单总金额分=unit_price×quantity×copies；不是单份价格。 |
-| `commission_bps` | `INT` | 非空；未设默认 | — | 下单时服务费快照；当前2000表示20%，10000为100%。 |
+| `commission_bps` | `INT` | 非空；未设默认 | — | 旧订单整单服务费快照；新订单作为缺省预估20%，实际入队快照在order_member。 |
+| `member_commission` | `BOOLEAN` | 非空；默认`FALSE` | — | V7新增；旧单FALSE保留旧算法；新单显式TRUE，先分服务金额再按成员分别扣佣。 |
 | `earnings` | `INT` | 非空；未设默认 | — | 整单预计净收入分；确认退款后按净额和原费率重算，不等于单个人份额。 |
 | `status` | `VARCHAR(16)` | 非空；未设默认 | — | unpaid/waiting/accepted/serving/confirming/completed/cancelled。 |
 | `refund_status` | `VARCHAR(16)` | 非空；默认`'none'` | — | none/pending/processing/refunded/rejected；独立于履约状态。 |
@@ -453,7 +491,9 @@ flowchart LR
 | `payment_id` | `VARCHAR(48)` | 可空；未设默认 | — | 确认成功的支付尝试ID，逻辑关联payment_attempt。 |
 | `settlement_id` | `VARCHAR(48)` | 可空；未设默认 | — | 首个关联收入记录ID，逻辑关联income_entry；每人具体记录看order_member。 |
 | `version` | `BIGINT` | 非空；默认`0` | — | 并发版本计数，更新时WHERE同时检查旧值并+1。 |
-| `copies` | `INT` | 非空；默认`1` | — | V5新增，整数1～99默认1；同一订单购买份数；旧订单补1。 |
+| `copies` | `INT` | 非空；默认`1` | — | V5新增；新组队只允许1，护航1～99；历史组队多份保持原值。 |
+| `contact_phone_enc` | `VARCHAR(256)` | 可空；默认NULL | — | V6新增；订单预留电话AES-GCM密文。新订单必填，旧订单为空；仅应用解密给授权订单参与者。 |
+| `contact_wechat_enc` | `VARCHAR(512)` | 可空；默认NULL | — | V6新增；选填微信AES-GCM密文，未填/旧单为NULL。不是微信登录身份。 |
 
 数据库约束与索引：
 
@@ -486,12 +526,14 @@ flowchart LR
 | `player_id` | `VARCHAR(48)` | 非空；未设默认 | 联合PK / FK | 参与服务成员。 |
 | `name` | `VARCHAR(60)` | 非空；未设默认 | — | 参与时的名称快照。 |
 | `position` | `INT` | 非空；未设默认 | — | 名单顺序；0为负责人，副手按序；分账尾差也按该顺序。 |
+| `commission_bps` | `INT` | 可空；默认NULL | CHECK | V7新增；新制订单成员加入时的抽佣快照，0～10000；旧订单NULL，不追溯填充。 |
 | `settlement_id` | `VARCHAR(48)` | 可空；未设默认 | — | 该成员本订单的收入记录ID，逻辑关联income_entry，可空。 |
 
 数据库约束与索引：
 
 - `PRIMARY KEY(order_id,player_id)`。
 - `CONSTRAINT uk_member_position UNIQUE(order_id,position)`。
+- `CONSTRAINT ck_member_commission CHECK(commission_bps IS NULL OR commission_bps BETWEEN 0 AND 10000)`（V7）。
 - `FOREIGN KEY(order_id) REFERENCES club_order(id)`。
 - `FOREIGN KEY(player_id) REFERENCES service_profile(id)`。
 - 普通索引 `ix_member_player(player_id,order_id)`。
@@ -773,14 +815,14 @@ flowchart LR
 ### 多份订单与金额
 
 ```text
-单份组队小时数 = quantity
-购买份数       = copies
+新组队总小时数 = quantity（copies固定1）
+护航购买份数   = copies
 组队总履约小时 = quantity × copies
 订单总价（分） = unit_price × quantity × copies
 整单预计收入   = floor((amount − 已确认退款额) × (10000 − commission_bps) / 10000)
 ```
 
-例如每小时6800分、每份1小时、买3份：订单amount=20400分，quantity=1，copies=3，总服务3小时，20%服务费后earnings=16320分，仍是一笔订单。护航quantity固定1，copies表示约定任务的购买份数，完成验收需覆盖全部份数。
+新组队示例：每小时6800分、选3小时，quantity=3、copies=1，amount=20400分、earnings=16320分。历史quantity=1、copies=3的同价订单保持原数据，总履约仍为3小时。护航quantity固定1，copies表示约定任务的购买份数，完成验收需覆盖全部份数。
 
 多人协作的earnings先按人数整除，再按position顺序给尾差补1分；`income_entry.amount`才是每个人的实际记账份额。订单上的settlement_id不是另一个“结算批次表”；目前没有名叫settlement的业务表。
 
@@ -793,7 +835,7 @@ flowchart LR
 | `team/timeline` | order_member / order_event，不是club_order里的JSON字段 |
 | `settlementStatus` | 聚合成员收入状态；不是club_order的持久化列 |
 | 游戏目录/区服 | CatalogService.GAMES代码常量；没有game、region表 |
-| 固定20%、10分钟、名称公告 | ClubController当前返回固定规则；没有club_settings表 |
+| 默认20%、10分钟、名称公告 | ClubController当前返回固定规则；没有club_settings表 |
 | 公共池 | PublicOrderPool内存索引 + club_order真实行；没有单独public_order表 |
 | 随机分配 | 官方卡片文案；付款后入公共池，不是数据库随机选人功能 |
 | 电话明文、登录原始token、验证码 | 不在库中明文保存；文档也不保存真实值 |
@@ -846,5 +888,55 @@ DMS结构信息里`COLUMN_KEY=MUL`可能是普通索引或组合键的一部分�
 |---|---|---|
 | 2026-10-26 | 将V1～V5整理为24张业务表完整字段字典，附Flyway历史表 | V5的copies对旧单补1，保留金额/收入；已验证云端V5和健康；本次只生成文档，不改库 |
 | 2026-10-26 | service_profile.available写权限仅由平台控制，用户端只读；旧用户写入口403 | 没有DDL和数据迁移，不改旧值；busy_slot占用和释放仍决定实时服务状态，产品版本仍1.0.1 |
+| 2026-10-27 | V6增加订单联系方式密文字段 | 旧单NULL；先DDL后后端和前端；产品版本仍1.0.1 |
+| 2026-10-27 | 本人注册号码作为招募电话默认值，读取已有login_identity加密身份 | 无DDL和数据回填，仍V6；43项后端及9项验收HTTP测试通过；云端新包健康UP，不修改历史订单或登录号码 |
 
 以后记录格式：`日期｜V迁移编号｜表/字段/约束｜为什么改｜旧数据如何处理｜先后发布顺序｜验证结果`。不把人员、订单或测试数据增删记作新产品版本。
+
+
+### 2026-10-27 V6 发布与回退
+
+先由数据库管理员在norman_acceptance的club_order增加contact_phone_enc VARCHAR(256) NULL、contact_wechat_enc VARCHAR(512) NULL；再部署服务端自动登记V6，健康后切换新版H5。V6检查字段是否已存在，兼容应用普通读写账号。旧订单不回填联系方式，不变更quantity/copies/amount/earnings。回退应用可保留两个新增列，不删除联系人数据或回退Flyway历史；应用加密密钥必须与配置一并保留。数据库字典只描述字段，不保存真实联系方式。
+
+
+2026-10-27 验证记录：96项TypeScript业务测试、类型检查、42项普通后端测试、9项验收HTTP测试通过，H5与小程序构建通过；云端已核验V6，用户端/后台HTTP 200、API健康UP。招募文案和独立路由为后续前端修订，已重新构建并通过云端界面检查。小程序仍仅编译校验，未做微信真机验收。产品版本保持1.0.1（未正式发布）。
+
+2026-10-27 注册手机号默认值来源：按当前用户ID读取已有login_identity(provider=phone,app_id为空)的subject_cipher，由应用解密给本人招募表单；不新增字段或迁移，仍为V6。订单可另留电话，contact_phone_enc与登录subject_cipher分别保存，互不覆盖。无短信身份不做号码回填，不给体验账号伪造号码。
+
+### 2026-10-27 V7 成员抽佣
+
+service_profile新增commission_bps INT NOT NULL DEFAULT 2000及ck_profile_commission范围约束；club_order新增member_commission BOOLEAN NOT NULL DEFAULT FALSE；order_member新增commission_bps INT NULL及ck_member_commission范围约束。各主键、外键和成员顺序唯一约束不变。Java V7支持管理员预建列和同名CHECK后由普通应用账号登记迁移。DDL见deploy/rds/member-commission-v7.sql。
+
+旧档案默认20%；旧订单标记FALSE，旧成员比例NULL，历史amount/commission_bps/earnings/income_entry不修改。新订单TRUE，各参与人在加入时复制档案比例，净收入按各自分得服务金额分别扣佣；该快照不随管理员之后改档案而变化。部署先DDL再应用和前端；新制订单产生后不可回退到旧算法应用，不能删除新增列或回退迁移记录。
+
+V7交付验证：2026-10-27通过DMS预建三列及两个范围约束，部署应用登记Flyway V7；核对迁移前订单均保持旧模式，未重算历史金额或结算。48项后端及9项验收HTTP测试通过，API健康UP。相关字段、主键、约束与回退限制已同步本手册；产品版本仍1.0.1。
+
+
+## 2026-10-28 支付通知归属校验（无迁移，仍V7）
+
+`payment_notification.event_key` 仍为 `channel:eventId` 主键，`payment_id` 仍关联唯一通知所属支付尝试。服务端现在读取已有事件的 payment_id，只有同一支付单才按幂等成功处理，跨单复用事件返回409；已有 payment_attempt.transaction_id 也不能被同事件替换。通知与支付/订单状态在一个事务确认。未增删表、字段、索引或历史记录，Flyway仍V7，产品仍1.0.1未正式发布。
+
+### 2026-10-31 开发记录
+
+身份登记与加密存储、Bitmap预筛和唯一索引、成年或入驻下单规则、短信/密码登录注册分离、找回密码、注销账号；产品保持1.0.1未正式发布。验证通过：68项普通服务端测试（含独立迁移和密码重置并发回归）、9项验收HTTP测试、109项TypeScript测试及类型检查；普通HTTP/验收H5和小程序构建通过。DMS核验Flyway V8、7个用户新增字段、短信用途字段及证件唯一索引；云端实际验证未登记未入驻拦截、跳转实名页面和已入驻豁免，未提交真实证件或创建订单。
+
+最终云端内部验收发布：`uat-20261031-user-identity-03`，2026-10-31 API健康UP；用户端/后台HTTPS均200，TLS校验通过，匿名身份资料接口401、恶意Origin403。产品仍1.0.1未正式发布。当前电脑4190/8443 SSH转发已恢复，安卓仍需保持原ConnectBot连接。
+
+## 2026-11-02 本轮验证与交付记录
+
+- 产品1.0.1，未正式发布；首次本地构建目标V9、当时云端V8；随后云端部署记录见下节，始终未执行真实收款、退款或银行转账。
+- 前端113项测试、两端vue-tsc通过；HTTP H5、验收H5、小程序构建通过。小程序仅编译校验，不代表真机支付能力。
+- 普通后端79项、验收后端9项测试通过；另6项钱包测试在H2连接池默认REPEATABLE_READ环境通过，业务资金事务显式READ_COMMITTED。不是已在RDS完成并发实测。
+- 官方SDK临时RSA签名/AES-GCM通知测试通过，包括篡改、过期、错误AppID拒绝；真实商户联调尚未进行。
+- 部署包 `artifacts/uat-20261102-wallet-01.tar.gz`（约44MiB）及SHA256已生成，含验收JAR及配套前端；机器可读验证记录 `artifacts/wallet-validation.json`。先执行V9管理员SQL再部署，未替换现有云端健康版本。
+- 浏览器工具明确返回 `Local browser use is disabled in Work settings`，因此本轮未进行浏览器视觉验收，也未通过阿里云DMS执行DDL。
+
+## 2026-11-02 云端钱包部署完成
+
+- 内部验收部署 `uat-20261102-wallet-01`；产品版本仍为 **1.0.1，未正式发布**。本节更新此前“待部署/浏览器受阻”的状态。
+- 原RDS实例的norman_acceptance库（MySQL 8.4.7）已新增7张InnoDB表，核验52个字段、10个唯一键、5个查询索引、3个资金CHECK；应用以原DML权限启动后Flyway登记到 **V9**。未回填历史收入，新钱包收入及提现表初始均为0行。
+- 固定命令SSH部署上传SHA256与本地部署包一致，服务健康UP；已通过浏览器验证成员“我的钱包”、后台管理员登录及“钱包提现”工作台，页面无接口错误。
+- 实际渠道查询确认wechat=false、alipay=false，仅内部acceptance模拟支付可用。没有产生真实收款、提现或银行转账；真实商户/服务号资料、短信及真实渠道联调仍待完成。
+- 回归沿用同一已验证构建：前端113项、普通后端79项、验收后端9项通过，另6项H2可重复读连接池钱包用例通过。云端验收未伪造真实可提现资金；真实提现状态流转以隔离集成测试验证，未做银行实付联调。
+- 验收截图：`artifacts/wallet-cloud-mobile.jpg`、`artifacts/wallet-cloud-admin.jpg`、`artifacts/wallet-cloud-schema.jpg`；部署与验证元数据见 `artifacts/wallet-validation.json`。
+- 用户端 `http://127.0.0.1:4190/mobile/`、后台 `http://127.0.0.1:4190/admin/`；私下HTTPS预览仍使用已配置设备的SSH转发，不代表公网正式发布。两端维护文档与表字段字典已同步。

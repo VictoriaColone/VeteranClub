@@ -10,8 +10,8 @@ public interface CatalogMapper {
     @Select("SELECT * FROM service_profile WHERE id=#{id}") Profile profile(String id);
     @Select("SELECT * FROM service_profile WHERE id=#{id} FOR UPDATE") Profile lockProfile(String id);
     @Select("SELECT * FROM service_profile ORDER BY created_at DESC LIMIT 1000") List<Profile> profiles();
-    @Insert("INSERT INTO service_profile(id,user_id,name,subtitle,game_ids,tags,rating,completed,price,color,avatar,available,approved,bio,created_at) VALUES(#{id},#{userId},#{name},#{subtitle},#{gameIds},#{tags},#{rating},#{completed},#{price},#{color},#{avatar},#{available},#{approved},#{bio},#{createdAt})") void insertProfile(Profile p);
-    @Update("UPDATE service_profile SET name=#{name},game_ids=#{gameIds},price=#{price},available=#{available},approved=#{approved} WHERE id=#{id}") void updateProfile(Profile p);
+    @Insert("INSERT INTO service_profile(id,user_id,name,subtitle,game_ids,tags,rating,completed,price,commission_bps,color,avatar,available,approved,bio,created_at) VALUES(#{id},#{userId},#{name},#{subtitle},#{gameIds},#{tags},#{rating},#{completed},#{price},#{commissionBps},#{color},#{avatar},#{available},#{approved},#{bio},#{createdAt})") void insertProfile(Profile p);
+    @Update("UPDATE service_profile SET name=#{name},game_ids=#{gameIds},price=#{price},commission_bps=#{commissionBps},available=#{available},approved=#{approved} WHERE id=#{id}") void updateProfile(Profile p);
     @Select("SELECT * FROM service_qualification WHERE player_id=#{id}") List<Qualification> qualifications(String id);
     @Select("SELECT * FROM service_qualification") List<Qualification> allQualifications();
     @Select("SELECT MIN(p.price) FROM service_profile p JOIN service_qualification q ON q.player_id=p.id WHERE p.approved=TRUE AND q.service_type=#{type} AND q.game_id=#{game}") Integer minimumPrice(String type,String game);

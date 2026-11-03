@@ -5,7 +5,7 @@ function fixture(){
  const storage=new MemoryStorage(),server=createMockServer(storage);const db=server.read();db.orders=[];storage.setItem(STORAGE_KEY,JSON.stringify(db));
  const login=(role:string,accountId?:string)=>server.dispatch('POST','/v1/auth/mock-login',{role,accountId}).data as Session;
  const user=login('user','u-boss'),buyer=login('user','u-p7'),admin=login('admin');
- const call=<T>(session:Session,method:string,path:string,body?:unknown)=>server.dispatch(method,path,body,session.token).data as T;
+ const call=<T>(session:Session,method:string,path:string,body?:unknown)=>server.dispatch(method,path,method==='POST'&&path==='/v1/orders'?{contactPhone:'13800000000',...(body as object)}:body,session.token).data as T;
  const apply=(type:ServiceType,game:string)=>call<Application>(user,'POST','/v1/applications',{serviceType:type,gameIds:[game],introduction:'申请该游戏该服务的独立资格，参加专项考核。'});
  const approve=(a:Application)=>{call(admin,'POST',`/v1/admin/applications/${a.id}/review`,{status:'assessment',note:'资料审核通过，安排独立考核'});call(admin,'POST',`/v1/admin/applications/${a.id}/review`,{status:'approved',score:90,note:'该游戏该服务专项考核通过'});};
  return {storage,server,user,buyer,admin,call,apply,approve,profile:()=>server.read().players.find(p=>p.id==='p0')!};

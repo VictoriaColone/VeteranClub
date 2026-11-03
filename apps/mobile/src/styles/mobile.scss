@@ -151,3 +151,86 @@ button{margin:0;font:inherit;line-height:1.4;border:0;border-radius:0;padding:0;
 /* #endif */
 
 .profile-identity{flex:1;min-width:0}.profile-name-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.profile-name-row .profile-name{overflow-wrap:anywhere}.presence-status{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;min-height:30px;padding:5px 10px;border:1px solid #bdb5f545;border-radius:20px;background:var(--club-purple-bg);color:var(--club-purple);font-size:11px;white-space:nowrap}.presence-status.receiving{border-color:#d9fd8855;background:var(--club-green-bg);color:var(--club-primary)}.presence-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Personal overviews link to routed lists, keeping account actions close at hand. */
+.account-summary{margin-top:18px;padding:17px 16px 14px;background:var(--club-surface);border:1px solid var(--club-border);border-radius:15px}
+.account-summary-heading,.account-summary-title{display:flex;align-items:center;gap:8px}
+.account-summary-heading{justify-content:space-between;min-height:30px}
+.account-summary-title{font-size:14px;font-weight:600}
+.summary-all{display:flex;align-items:center;gap:3px;min-width:54px;min-height:36px;padding:4px 0 4px 12px;color:var(--club-secondary);font-size:11px}
+.account-summary .profile-stats{margin:12px 0 0;padding:13px 0 1px;border:0;border-top:1px solid var(--club-border);border-radius:0;background:transparent}
+.product-summary-body{width:100%;padding:15px 0 3px;text-align:left}
+.product-summary-body>view{display:flex;align-items:baseline;gap:7px;font-size:11px;color:var(--club-secondary)}
+.summary-count{font-size:26px;font-weight:600;color:var(--club-text)}
+.summary-divider{padding:0 5px;color:var(--club-border)}
+.summary-caption{display:block;margin-top:8px;color:var(--club-muted);font-size:11px;line-height:1.7}
+.account-topbar{justify-content:space-between;gap:10px;min-height:66px}
+.account-back,.account-refresh{display:flex;align-items:center;justify-content:center;min-width:40px;min-height:40px;padding:0}
+.account-page-title{flex:1;text-align:center;font-size:17px;font-weight:600}
+.account-page{padding-top:20px;padding-bottom:calc(28px + var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.account-page .order-scope{margin-top:0}
+.account-page .empty{min-height:220px;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.account-products .profile-products-toolbar{padding:0 0 8px}
+.order-contact{margin-top:20px;padding:0 14px;border:1px solid var(--club-border);border-radius:12px}
+.order-contact>.form-label{margin-top:15px}.order-contact .detail-row>text:last-child{overflow-wrap:anywhere;text-align:right;max-width:70%}
+
+
+/* Compact recruitment form: one scrolling body, persistent title and submit action. */
+.recruitment-sheet{--recruitment-body-height:calc(var(--club-viewport-height,100vh) * .9 - 164px - var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}
+.recruitment-header{flex-shrink:0;padding:3px 52px 14px 22px}
+.recruitment-header .sheet-title{font-size:20px;line-height:1.5}
+.recruitment-sheet .sheet-scroll{min-height:0;max-height:var(--recruitment-body-height)}
+.recruitment-checkout{padding:0 22px 10px}
+.checkout-summary{display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--club-border)}
+.checkout-summary>.seller-avatar{width:34px;height:34px;border-radius:10px;font-size:17px}
+.checkout-summary>.club-avatar{font-size:25px}
+.checkout-summary-body{flex:1;min-width:0}
+.checkout-summary-name{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.checkout-summary-game{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:11px;color:var(--club-secondary)}
+.checkout-summary-mode{font-size:10px;color:var(--club-muted);white-space:nowrap}
+.checkout-availability{padding-top:10px;font-size:11px;line-height:1.6;color:var(--club-secondary)}
+.checkout-options{padding:5px 0;border-bottom:1px solid var(--club-border)}
+.checkout-option-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:55px;padding:9px 0}
+.checkout-label{font-size:12px;color:var(--club-secondary);white-space:nowrap}
+.checkout-label>.required-mark{color:var(--club-primary)}
+.checkout-unit-price{display:block;margin-top:5px;font-size:10px;color:var(--club-muted)}
+.checkout-region{font-size:12px}
+.checkout-regions{justify-content:flex-end;gap:6px;margin:0}
+.checkout-regions>button{font-size:11px;padding:6px 10px}
+.checkout-task{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:9px 0;font-size:12px;line-height:1.7}
+.checkout-task>text:last-child{max-width:70%;text-align:right;overflow-wrap:anywhere}
+.checkout-fields{padding-top:5px}
+.checkout-field-row{display:flex;align-items:center;gap:8px;min-height:51px;border-bottom:1px solid #ffffff08}
+.checkout-field-row>.checkout-label,.checkout-note-row>.checkout-label{width:82px;flex-shrink:0}
+.checkout-input{flex:1;min-width:0;height:44px;font-size:12px;color:var(--club-text);background:transparent}
+.checkout-note-row{display:flex;align-items:flex-start;gap:8px;padding-top:8px}
+.checkout-note-row>.checkout-label{padding-top:8px}
+.checkout-note{flex:1;min-width:0;width:auto;height:60px;padding:7px 0;font-size:12px;line-height:1.7;color:var(--club-text);background:transparent}
+.checkout-agreement{margin:14px 0 0;padding:0;font-size:10px;line-height:1.6}
+.recruitment-footer{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;border-top:1px solid var(--club-border);background:var(--club-surface)}
+.recruitment-footer .total-price{font-size:26px}
+.recruitment-footer .total-price>text{font-size:11px;margin-right:7px}
+.recruitment-footer>.primary{min-width:132px;min-height:44px;padding:12px 18px}
+/* #ifdef H5 */
+.recruitment-sheet .sheet-scroll{height:auto}
+.recruitment-sheet .sheet-scroll .uni-scroll-view{height:auto!important;max-height:var(--recruitment-body-height)}
+@media(min-width:700px){.recruitment-sheet{--recruitment-body-height:calc(var(--club-viewport-height,100vh) * .85 - 164px - var(--club-safe-bottom,env(safe-area-inset-bottom,0px)))}}
+/* #endif */
+
+.assistant-search{display:flex;align-items:center;gap:10px;padding:0 12px;height:44px;border:1px solid var(--club-border);border-radius:10px;background:#ffffff04}
+.assistant-search input{flex:1;min-width:0;font-size:13px;color:var(--club-text)}
+.assistant-count{padding:14px 0 8px;font-size:11px;color:var(--club-muted)}
+.assistant-list{border-top:1px solid var(--club-border)}
+.assistant-row{display:flex;align-items:center;gap:11px;padding:14px 0;border-bottom:1px solid var(--club-border)}
+.assistant-avatar{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;border-radius:10px;font-size:15px;font-weight:600}
+.assistant-info{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}
+.assistant-info>text:first-child{font-size:14px;font-weight:600}
+.assistant-info>text:last-child{font-size:11px;line-height:1.5;color:var(--club-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-commission{display:inline-block;margin-left:6px;font-size:10px;color:var(--club-muted)}
+
+.publish-choice{display:flex;align-items:center;gap:14px;width:100%;padding:17px 14px;margin-top:14px;border:1px solid var(--club-border);border-radius:var(--club-radius);background:var(--club-raised);text-align:left}
+.publish-choice>view:first-child{flex:1;min-width:0}
+.publish-choice>view:first-child>view{font-size:15px;font-weight:600}
+.publish-choice>view:first-child>text{display:block;margin-top:5px;font-size:11px;line-height:1.8;color:var(--club-muted)}
+
+.identity-menu-status{font-size:12px;color:#939bad;white-space:nowrap}

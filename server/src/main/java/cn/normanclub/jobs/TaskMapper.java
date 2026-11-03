@@ -10,5 +10,6 @@ public interface TaskMapper {
     @Select("SELECT * FROM background_task WHERE (state='pending' AND run_at<=#{now}) OR (state='running' AND lease_until<=#{now}) ORDER BY run_at LIMIT 1 FOR UPDATE SKIP LOCKED") Task due(long now);
     @Update("UPDATE background_task SET state='running',lease_until=#{lease},attempts=attempts+1 WHERE id=#{id}") void claim(String id,long lease);
     @Update("UPDATE background_task SET state=#{state},run_at=#{runAt},lease_until=NULL,last_error=#{error} WHERE id=#{id}") void finish(String id,String state,long runAt,String error);
+    @Update("UPDATE background_task SET state='pending',attempts=0,run_at=#{runAt},lease_until=NULL,last_error=NULL WHERE id=#{id}") void awaitingChannel(String id,long runAt);
     @Select("SELECT * FROM background_task WHERE state IN ('blocked','failed') ORDER BY run_at LIMIT 100") List<Task> problems();
 }

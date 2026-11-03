@@ -23,6 +23,11 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
             require(Set.of("GET","POST","PATCH","DELETE","OPTIONS").contains(request.getMethod()),405,"请求方法不支持");
             require(request.getContentLengthLong()<=65_536,413,"请求内容过大");
             String origin=request.getHeader("Origin");require(origin==null||config.allowedOrigins.contains(origin),403,"请求来源不受信任");
+            // Browser metadata also covers login before a session/CSRF token exists.
+            // Explicitly trusted cross-origin H5 deployments still use the origin allowlist.
+            boolean oauthNavigation="GET".equals(request.getMethod())&&"/v1/payments/wechat/oauth/callback".equals(request.getRequestURI())&&"navigate".equals(request.getHeader("Sec-Fetch-Mode"))&&"document".equals(request.getHeader("Sec-Fetch-Dest"));
+            require(oauthNavigation||!"cross-site".equals(request.getHeader("Sec-Fetch-Site"))||origin!=null&&config.allowedOrigins.contains(origin),403,"跨站请求不受信任");
+            if("h5".equals(request.getHeader("X-Client-Type"))&&!Set.of("GET","OPTIONS").contains(request.getMethod()))require(origin!=null,403,"浏览器写请求缺少可信来源");
             String ip=abuse.ip(request);abuse.check(ip);abuse.limit("api-ip",ip,1200,60_000);
             String audience="staff".equals(request.getHeader("X-Session-Audience"))?"staff":"user";
             String header=request.getHeader("Authorization");boolean bearer=header!=null&&header.startsWith("Bearer ");

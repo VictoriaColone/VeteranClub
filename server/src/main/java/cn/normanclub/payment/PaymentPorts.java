@@ -7,7 +7,7 @@ import cn.normanclub.common.ApiException;
 
 @Configuration
 public class PaymentPorts {
-    @Bean PaymentGateway wechatGateway(){return new Unconfigured("wechat");}
+    @Bean PaymentGateway wechatGateway(WechatConfig config,WechatIdentityMapper identities,cn.normanclub.business.OrderMapper orders,cn.normanclub.security.Crypto crypto,java.time.Clock clock,tools.jackson.databind.json.JsonMapper json){return new WechatGateway(config,identities,orders,crypto,clock,json);}
     @Bean PaymentGateway alipayGateway(){return new Unconfigured("alipay");}
     static class Unconfigured implements PaymentGateway {
         private final String channel;Unconfigured(String channel){this.channel=channel;}

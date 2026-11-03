@@ -32,7 +32,7 @@ public class CatalogService {
     public Map<String,Object> profileView(Profile p){return profileView(p,db.qualifications(p.id),orders.busy(p.id)!=null);}
     private Map<String,Object> profileView(Profile p,List<Qualification> q,boolean busy){
         Map<String,List<String>> directions=q.stream().collect(Collectors.groupingBy(v->v.serviceType,LinkedHashMap::new,Collectors.mapping(v->v.gameId,Collectors.toList())));
-        return map("id",p.id,"userId",p.userId,"name",p.name,"subtitle",p.subtitle,"gameIds",strings(p.gameIds),"tags",strings(p.tags),"rating",p.rating,"completed",p.completed,"price",p.price,"color",p.color,"avatar",p.avatar,"available",p.available,"busy",busy,"approved",p.approved,"qualifications",new ArrayList<>(directions.keySet()),"qualificationGames",directions,"bio",p.bio);
+        return map("id",p.id,"userId",p.userId,"name",p.name,"subtitle",p.subtitle,"gameIds",strings(p.gameIds),"tags",strings(p.tags),"rating",p.rating,"completed",p.completed,"price",p.price,"commissionBps",p.commissionBps,"color",p.color,"avatar",p.avatar,"available",p.available,"busy",busy,"approved",p.approved,"qualifications",new ArrayList<>(directions.keySet()),"qualificationGames",directions,"bio",p.bio);
     }
     public List<Map<String,Object>> profiles(Actor actor,String game){
         if(game!=null)game(game);Map<String,List<Qualification>> q=db.allQualifications().stream().collect(Collectors.groupingBy(v->v.playerId));Set<String> busy=new HashSet<>(orders.busyPlayers());
@@ -72,8 +72,8 @@ public class CatalogService {
     }
     public Map<String,Object> availability(Actor actor,Map<String,Object> body){throw new ApiException(403,"接单状态由平台管理，用户不能修改");}
     @Transactional public Map<String,Object> updateProfile(Actor actor,String id,Map<String,Object> body){
-        actor.roles("admin");Inputs in=new Inputs(body,"available","approved","price");Profile p=db.lockProfile(Inputs.identifier(id));require(p!=null,404,"成员不存在");
+        actor.roles("admin");Inputs in=new Inputs(body,"available","approved","commissionBps");Profile p=db.lockProfile(Inputs.identifier(id));require(p!=null,404,"成员不存在");
         if(in.has("approved")){require(!in.bool("approved"),400,"必须通过入驻考核授予资格");p.approved=false;p.available=false;db.revoke(p.id);}
-        if(in.has("available")){p.available=in.bool("available");if(p.available)require(p.approved,403,"尚未取得接单资格");}if(in.has("price"))p.price=in.integer("price",100,100000);db.updateProfile(p);updates.changed();audit.record(actor.name(),"更新成员",p.id,"资格、接单状态或服务单价已更新");return profileView(p);
+        if(in.has("available")){p.available=in.bool("available");if(p.available)require(p.approved,403,"尚未取得接单资格");}if(in.has("commissionBps"))p.commissionBps=in.integer("commissionBps",0,10000);db.updateProfile(p);updates.changed();audit.record(actor.name(),"更新成员",p.id,"入驻、接单状态或抽佣已更新；平台抽佣 "+p.commissionBps+" 基点");return profileView(p);
     }
 }

@@ -26,7 +26,7 @@ public class TaskRunner {
                 case "PAYOUT","PAYMENT_EXCEPTION" -> {tasks.blocked(t);return;}
                 default -> throw new IllegalStateException("unsupported task");
             }
-            if(done)tasks.done(t);else tasks.retry(t,"等待渠道确认或订单关单条件");
+            if(done)tasks.done(t);else if("REFUND".equals(t.type))tasks.awaitingChannel(t);else tasks.retry(t,"等待渠道确认或订单关单条件");
         }catch(Exception ex){tasks.retry(t,"处理未完成，请检查渠道与任务状态");}
     }
     @Scheduled(fixedDelay=60000) public void recover(){if(!config.jobsEnabled)return;for(Order o:orderDb.expired(clock.millis()))tasks.enqueue("CLOSE_ORDER",o.id,clock.millis());}

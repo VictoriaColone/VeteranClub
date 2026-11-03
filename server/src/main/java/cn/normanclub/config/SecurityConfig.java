@@ -27,7 +27,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(a->a
                 .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll()
                 .requestMatchers(HttpMethod.GET,"/actuator/health","/v1/club","/v1/catalog/games","/v1/payments/channels").permitAll()
-                .requestMatchers(HttpMethod.POST,"/v1/auth/sms/send","/v1/auth/sms/login","/v1/auth/staff/login","/v1/payments/notify/wechat","/v1/payments/notify/alipay").permitAll()
+                .requestMatchers(HttpMethod.POST,"/v1/auth/sms/send","/v1/auth/sms/login","/v1/auth/sms/register","/v1/auth/password/login","/v1/auth/password/reset","/v1/auth/staff/login","/v1/payments/notify/wechat","/v1/payments/notify/alipay").permitAll()
                 .requestMatchers("/v1/admin/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","FINANCE")
                 .anyRequest().authenticated())
             .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->{s.setStatus(401);s.setContentType("application/json;charset=UTF-8");json.writeValue(s.getOutputStream(),new ApiResponse<>(401,"请先登录",null,String.valueOf(r.getAttribute("requestId"))));})

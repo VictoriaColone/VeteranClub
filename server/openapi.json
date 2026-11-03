@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Norman Club API",
-    "version": "1.0.0",
-    "description": "金额为整数分，时间为 Unix 毫秒。未接入的支付渠道返回503。所有 Cookie 写请求均须对应 CSRF 头，原生用户端可用 Bearer。"
+    "version": "1.0.1",
+    "description": "金额为整数分，时间为 Unix 毫秒。未接入的支付渠道返回503。所有 Cookie 写请求均须对应 CSRF 头，原生用户端可用 Bearer。 H5写请求需可信Origin，跨站浏览器请求缺少可信来源时拒绝；生产必须HTTPS。支付通知需服务端验签并匹配渠道、商户、支付单、金额及币种，真实渠道仍未接入。 1.0.1钱包支持人工审核提现；微信JSAPI适配默认关闭，待商户资料及真实联调。模拟及历史收入不得成为真实可提余额。"
   },
   "servers": [
     {
@@ -122,6 +122,17 @@
                   "phone": {
                     "type": "string",
                     "pattern": "^1[3-9][0-9]{9}$"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "login",
+                      "register",
+                      "reset",
+                      "close"
+                    ],
+                    "default": "login",
+                    "description": "验证码与用途绑定，60秒发送间隔按手机号共用。"
                   }
                 },
                 "required": [
@@ -136,7 +147,7 @@
     },
     "/v1/auth/sms/login": {
       "post": {
-        "summary": "短信登录／注册",
+        "summary": "已注册用户短信登录",
         "responses": {
           "200": {
             "description": "成功",
@@ -248,7 +259,8 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "description": "仅登录已注册手机号，不自动创建用户。验证码用途必须为login。"
       }
     },
     "/v1/auth/staff/login": {
@@ -1872,7 +1884,8 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "description": " 新制订单memberCommission=true，待接订单earnings按当前接单成员自己的比例预估，estimatedCommissionBps仅为预估；实际比例在加入时写入team[].commissionBps。历史memberCommission=false保持整单旧算法。"
       },
       "post": {
         "summary": "创建幂等订单",
@@ -2007,7 +2020,10 @@
                     ]
                   },
                   "quantity": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8,
+                    "description": "组队总服务小时数；护航固定 1。"
                   },
                   "playerId": {
                     "type": "string"
@@ -2028,17 +2044,37 @@
                   },
                   "note": {
                     "type": "string"
+                  },
+                  "copies": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99,
+                    "default": 1,
+                    "description": "护航购买份数，合并为一单；组队必须为 1。历史多份组队保持原金额和总履约时长。"
+                  },
+                  "contactPhone": {
+                    "type": "string",
+                    "minLength": 7,
+                    "maxLength": 24,
+                    "description": "必填联系电话，支持手机或座机，允许开头 +、空格和短横线，有效数字 7～15 位。加密保存。"
+                  },
+                  "contactWechat": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "选填微信号，加密保存。"
                   }
                 },
                 "required": [
                   "gameId",
                   "region",
-                  "quantity"
+                  "quantity",
+                  "contactPhone"
                 ]
               }
             }
           }
-        }
+        },
+        "description": " 新订单必须预留联系电话，微信选填。联系方式仅向订单买家、已接单协作成员和员工返回，不进入公共单数据。 下单需已入驻或填报年龄满18岁；缺少年龄登记且未入驻403，未成年且未入驻403。"
       }
     },
     "/v1/orders/{id}": {
@@ -2374,7 +2410,8 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "description": " 新制订单参与人加入时锁定各自commissionBps，服务金额先均分再分别扣佣；成员增减重算预计总收入。开始后名单锁定。旧订单仍沿用历史整单算法。"
       }
     },
     "/v1/orders/{id}/assign": {
@@ -2503,7 +2540,8 @@
               }
             }
           }
-        }
+        },
+        "description": " 新制订单参与人加入时锁定各自commissionBps，服务金额先均分再分别扣佣；成员增减重算预计总收入。开始后名单锁定。旧订单仍沿用历史整单算法。"
       }
     },
     "/v1/orders/{id}/add-assistant": {
@@ -2629,7 +2667,8 @@
               }
             }
           }
-        }
+        },
+        "description": " 新制订单参与人加入时锁定各自commissionBps，服务金额先均分再分别扣佣；成员增减重算预计总收入。开始后名单锁定。旧订单仍沿用历史整单算法。"
       }
     },
     "/v1/orders/{id}/remove-assistant": {
@@ -2755,7 +2794,8 @@
               }
             }
           }
-        }
+        },
+        "description": " 新制订单参与人加入时锁定各自commissionBps，服务金额先均分再分别扣佣；成员增减重算预计总收入。开始后名单锁定。旧订单仍沿用历史整单算法。"
       }
     },
     "/v1/orders/{id}/start": {
@@ -3700,7 +3740,114 @@
               }
             }
           }
-        }
+        },
+        "description": " 创建支付尝试同样校验成年登记或已入驻资格。"
+      },
+      "get": {
+        "summary": "仅本人恢复支付尝试",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ]
       }
     },
     "/v1/payments/{id}": {
@@ -3904,7 +4051,8 @@
               }
             }
           }
-        }
+        },
+        "description": "只接受渠道服务端通知。适配器须核验原始签名、商户/应用与付款成功状态；服务端绑定URL渠道、支付单、金额/CNY及交易号，事件号只能属于同一支付单；相同通知幂等处理。未配置渠道返回503。"
       }
     },
     "/v1/payments/notify/alipay": {
@@ -4009,7 +4157,8 @@
               }
             }
           }
-        }
+        },
+        "description": "只接受渠道服务端通知。适配器须核验原始签名、商户/应用与付款成功状态；服务端绑定URL渠道、支付单、金额/CNY及交易号，事件号只能属于同一支付单；相同通知幂等处理。未配置渠道返回503。"
       }
     },
     "/v1/admin/users": {
@@ -5194,7 +5343,7 @@
     },
     "/v1/admin/players/{id}": {
       "patch": {
-        "summary": "成员单价、状态或撤销资格",
+        "summary": "成员抽佣、接单状态或撤销入驻",
         "responses": {
           "200": {
             "description": "成功",
@@ -5305,17 +5454,18 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "price": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "整数分；价格、金额上限和实付额由服务端校验"
-                  },
                   "available": {
                     "type": "boolean"
                   },
                   "approved": {
                     "type": "boolean",
                     "const": false
+                  },
+                  "commissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "description": "平台抽佣比例，基点；2000=20%，1234=12.34%"
                   }
                 },
                 "required": []
@@ -5327,7 +5477,8 @@
           {
             "StaffCookie": []
           }
-        ]
+        ],
+        "description": "仅管理员。商品价格由成员发布商品时控制，不再支持price。commissionBps为0～10000整数基点，默认2000（20%）；成员接单或加入协作时锁定快照，修改不影响已锁定订单。"
       }
     },
     "/v1/admin/applications/{id}/review": {
@@ -5597,6 +5748,2541 @@
             "StaffCookie": []
           }
         ]
+      }
+    },
+    "/v1/auth/contact": {
+      "get": {
+        "summary": "读取本人短信注册手机号",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "userId",
+                            "phone"
+                          ],
+                          "properties": {
+                            "userId": {
+                              "type": "string"
+                            },
+                            "phone": {
+                              "type": "string",
+                              "description": "当前用户短信注册手机号；没有时为空字符串。"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ],
+        "description": "仅已登录普通用户可调用；按当前会话读取本人phone身份并解密，返回userId与phone。无手机号的验收/旧账号返回空字符串。不能指定其他用户，员工403；no-store。手机号不进入登录/会话响应或前端持久缓存。"
+      }
+    },
+    "/v1/auth/sms/register": {
+      "post": {
+        "summary": "短信验证并注册新用户",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "pattern": "^1[3-9][0-9]{9}$"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 72,
+                    "writeOnly": true,
+                    "description": "至少8位并包含字母和数字；服务端检查UTF-8字节数不超过72。"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "security": [],
+        "description": "手机号不可重复；先验证register用途验证码后判断是否已注册，避免匿名查询注册状态。密码至少8位、含字母与数字、UTF-8最多72字节。"
+      }
+    },
+    "/v1/auth/password/login": {
+      "post": {
+        "summary": "手机号和密码登录",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "pattern": "^1[3-9][0-9]{9}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true,
+                    "description": "至少8位并包含字母和数字；服务端检查UTF-8字节数不超过72。"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "security": [],
+        "description": "失败统一返回手机号或密码不正确；账号/IP限流；Bcrypt12存储，Cookie/Bearer与短信登录一致。"
+      }
+    },
+    "/v1/auth/password/reset": {
+      "post": {
+        "summary": "通过短信找回或设置密码",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "pattern": "^1[3-9][0-9]{9}$"
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 72,
+                    "writeOnly": true,
+                    "description": "至少8位并包含字母和数字；服务端检查UTF-8字节数不超过72。"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "security": [],
+        "description": "必须提供reset用途短信验证码；成功后撤销所有用户会话，清除用户Cookie，员工会话不受影响。"
+      }
+    },
+    "/v1/account/identity": {
+      "get": {
+        "summary": "本人身份登记与下单资格",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "userId",
+                            "phone"
+                          ],
+                          "properties": {
+                            "userId": {
+                              "type": "string"
+                            },
+                            "phone": {
+                              "type": "string",
+                              "description": "当前用户短信注册手机号；没有时为空字符串。"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ],
+        "description": "仅用户本人可读取；返回missing/self_declared、adult、onboarded、canOrder、maskedName、maskedIdNumber、submittedAt、consentVersion及verification=not_verified。无联网验真；按中国时间计算年龄，已入驻或填报满18岁可下单。无匿名身份证查重接口。"
+      },
+      "post": {
+        "summary": "提交本人姓名和身份证信息",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 60,
+                    "writeOnly": true
+                  },
+                  "idNumber": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{16}[0-9Xx]$",
+                    "writeOnly": true
+                  },
+                  "consent": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "consentVersion": {
+                    "type": "string",
+                    "const": "2026-10-31"
+                  }
+                },
+                "required": [
+                  "name",
+                  "idNumber",
+                  "consent",
+                  "consentVersion"
+                ]
+              }
+            }
+          }
+        },
+        "description": "加密存储，格式/校验码/日期检查，明确同意2026-10-31版处理说明；未满14岁不保存；10次/账号/日。提交后不可自行改绑。Bitmap Bloom预筛+HMAC唯一索引去重，仅返回脱敏状态，不表示权威认证。"
+      }
+    },
+    "/v1/auth/account/close": {
+      "post": {
+        "summary": "短信验证后注销本人账号",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$",
+                    "writeOnly": true
+                  },
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "confirm"
+                ]
+              }
+            }
+          }
+        },
+        "description": "close用途短信验证码；须无未完成订单/售后/待确认或异常支付/未结清收益。停用旧账号，撤销全部用户会话，清除密码及身份资料，解除手机号和证件绑定、下架商品、撤销入驻；保留历史交易关联和审计。体验账号无手机号不能注销。"
+      }
+    },
+    "/v1/wallet": {
+      "get": {
+        "summary": "本人钱包：真实余额与模拟收入分离",
+        "description": "总额、待结算、可提、冻结、已付款；银行卡脱敏，最近200笔提现和100条流水；金额整数分。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/wallet/bank": {
+      "post": {
+        "summary": "加密保存本人收款卡并重新验证密码",
+        "description": "仅格式/Luhn和填报姓名一致性校验，不代表银行实名核验；处理中提现禁止换卡。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "holder": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 60
+                  },
+                  "bankName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "bankNumber": {
+                    "type": "string",
+                    "pattern": "^[0-9]{16,19}$",
+                    "writeOnly": true
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "consent": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "holder",
+                  "bankName",
+                  "bankNumber",
+                  "password",
+                  "consent"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/wallet/withdrawals": {
+      "post": {
+        "summary": "幂等申请提现并原子冻结",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 5000000
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "amount",
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/wallet/withdrawals/{id}/cancel": {
+      "post": {
+        "summary": "本人撤销待审核提现并解冻",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/admin/withdrawals": {
+      "get": {
+        "summary": "管理员或财务查看最近200笔真实提现",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/admin/withdrawals/{id}/bank": {
+      "post": {
+        "summary": "审核后临时查看完整付款账户，二次验证并审计",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/withdrawals/{id}/approve": {
+      "post": {
+        "summary": "审核通过",
+        "description": "仅更新平台核算状态，不发起银行转账；银行结果不明保持processing，禁止解冻。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "password",
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/withdrawals/{id}/reject": {
+      "post": {
+        "summary": "拒绝并解冻",
+        "description": "仅更新平台核算状态，不发起银行转账；银行结果不明保持processing，禁止解冻。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "password",
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/withdrawals/{id}/start": {
+      "post": {
+        "summary": "进入人工付款处理",
+        "description": "仅更新平台核算状态，不发起银行转账；银行结果不明保持processing，禁止解冻。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "password",
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/withdrawals/{id}/paid": {
+      "post": {
+        "summary": "核对银行流水后登记已付款",
+        "description": "仅更新平台核算状态，不发起银行转账；银行结果不明保持processing，禁止解冻。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  },
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "reference": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "password",
+                  "note",
+                  "confirm",
+                  "reference"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/withdrawals/{id}/not-paid": {
+      "post": {
+        "summary": "确认银行未付款并解冻",
+        "description": "仅更新平台核算状态，不发起银行转账；银行结果不明保持processing，禁止解冻。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "StaffCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 72,
+                    "writeOnly": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  },
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "password",
+                  "note",
+                  "confirm"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/wechat/authorize": {
+      "post": {
+        "summary": "公众号JSAPI授权：绑定登录会话的一次性state",
+        "description": "仅Cookie H5；未配置503；返回authorized或固定微信授权域名url；不接受客户端openid。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "频率限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "UserCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Session-Audience",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "staff"
+              ],
+              "default": "user"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "H5 Cookie 请求必填，取对应 norman-user-csrf / norman-staff-csrf Cookie",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "orderId": {
+                    "type": "string",
+                    "maxLength": 48
+                  }
+                },
+                "required": [
+                  "orderId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/wechat/oauth/callback": {
+      "get": {
+        "summary": "公众号OAuth回调：同一用户/会话的一次性state换加密openid",
+        "security": [
+          {
+            "UserCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "固定正式域名用户支付页，不含code/state"
+          },
+          "400": {
+            "description": "参数校验",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限或封禁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态／并发冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "渠道未配置或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

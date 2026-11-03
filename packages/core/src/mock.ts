@@ -3,7 +3,7 @@ import {parseMockPath,shanghaiDay} from './runtime';
 import { CLUB_NAME } from './brand';
 import {createClubProducts,clubProductId} from './club-products';
 import {isClubProduct} from './types';
-import { canServe, qualifiedGames, orderMembers, participantEarnings, totalOrderHours, MAX_ORDER_COPIES, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
+import { canServe, qualifiedGames, orderMembers, participantEarnings, totalMemberEarnings, orderRevenue, totalOrderHours, MAX_ORDER_COPIES, validContactPhone, isStaff, type ApiResponse, type Audit, type Database, type Dashboard, type Order, type OrderInput, type Product, type Role, type Session, type StorageAdapter, type Transport, type Wallet } from './types';
 export class ApiError extends Error { constructor(public code: number,message: string){super(message);this.name='ApiError';} }
 export class MemoryStorage implements StorageAdapter { private data=new Map<string,string>(); getItem(k:string){return this.data.get(k)??null;} setItem(k:string,v:string){this.data.set(k,v);} }
 const clone=<T>(data:T):T=>JSON.parse(JSON.stringify(data));
@@ -27,7 +27,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
         db.audit.forEach(a=>{a.action=neutral(a.action);a.detail=neutral(a.detail);});db.settings.announcement=neutral(db.settings.announcement);db.orders.forEach(o=>{o.note=neutral(o.note);o.timeline.forEach(t=>{t.label=neutral(t.label);if(t.note)t.note=neutral(t.note);});});
       }
       if(db.schema===2){
-        let changed=legacyUpgrade;
+        let changed=legacyUpgrade;for(const p of db.players)if(p.commissionBps===undefined){p.commissionBps=DEFAULT_COMMISSION_BPS;changed=true;}
         for(const order of db.orders)if(order.copies===undefined){order.copies=1;changed=true;}
         if(db.settings.name!==CLUB_NAME){db.settings.name=CLUB_NAME;changed=true;}
         db.players.forEach(p=>{if(p.subtitle==='欢迎加入星曜'){p.subtitle=`欢迎加入${CLUB_NAME}`;changed=true;}});
@@ -55,6 +55,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }catch{/* recreate corrupt demo data */}}
     const db=createSeed(clock());storage.setItem(STORAGE_KEY,JSON.stringify(db));return db;
   }
+  function demoIdentity(db:Database,userId:string){const value=(db.demoIdentityAdults??Object.fromEntries(db.players.map(p=>[p.userId,true])))[userId];const profile=db.players.find(p=>p.userId===userId);const onboarded=!!profile?.approved&&profile.qualifications.some(type=>qualifiedGames(profile,type).length>0);return {status:value===undefined?'missing':'self_declared',adult:value===true,onboarded,canOrder:value===true||onboarded,maskedName:value===undefined?'':'演示用户',maskedIdNumber:value===undefined?'':'模拟数据',submittedAt:value===undefined?null:clock(),consentVersion:'2026-10-31',verification:'not_verified'};}
   function save(db:Database){db.revision++;storage.setItem(STORAGE_KEY,JSON.stringify(db));}
   function audit(db:Database,s:Pick<Session,'name'>,action:string,target:string,detail:string){const a:Audit={id:id('log-'),at:clock(),actor:s.name,action,target,detail};db.audit.unshift(a);db.audit=db.audit.slice(0,300);}
   function event(o:Order,s:Session,label:string,note?:string){o.timeline.push({at:clock(),actor:s.name,label,note});}
@@ -83,7 +84,7 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
         if(!o.settlementId){o.settlementId=batch.id;changed=true;}
       }
       if(members.every(m=>db.settlements.some(b=>b.id===m.settlementId&&b.status==='paid'))&&!o.timeline.some(e=>e.label==='系统自动结算完成（模拟）')){
-        o.timeline.push({at:clock(),actor:'系统',label:'系统自动结算完成（模拟）',note:'按订单服务费规则扣除费用后，协作成员均分净报酬。'});changed=true;
+        o.timeline.push({at:clock(),actor:'系统',label:'系统自动结算完成（模拟）',note:'按订单服务费规则扣除费用后，按加入时锁定的规则分配成员报酬。'});changed=true;
       }
     }
     return changed;
@@ -97,6 +98,9 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     const s=db.sessions.find(v=>v.token===token);check(s,'请先登录演示账号',401);const profile=db.players.find(p=>p.userId===s.userId);if(!isStaff(s.role))s.playerId=profile?.id;
     if(route==='/v1/auth/logout'&&method==='POST'){db.sessions=db.sessions.filter(v=>v.token!==token);save(db);data=null;}
+    else if(route==='/v1/auth/contact'&&method==='GET'){check(!isStaff(s.role),'请使用用户账号操作',403);data={userId:s.userId,phone:''};}
+    else if(route==='/v1/account/identity'&&method==='GET'){check(!isStaff(s.role),'请使用用户账号操作',403);data=demoIdentity(db,s.userId);}
+    else if(route==='/v1/account/identity'&&method==='POST'){throw new ApiError(403,'本地体验模式不接收真实证件，请在服务器用户端填写');}
     else if(route==='/v1/catalog/games'&&method==='GET')data=db.games;
     else if(route==='/v1/club'&&method==='GET')data=db.settings;
     else if(route==='/v1/players'&&method==='GET'){data=db.players.filter(p=>(isStaff(s.role)||p.approved||p.userId===s.userId)&&(!q.get('gameId')||p.gameIds.includes(q.get('gameId')!))).map(p=>({...p,busy:db.orders.some(o=>orderMembers(o).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(o.status))}));}
@@ -136,10 +140,10 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       data=list.sort((a,b)=>b.createdAt-a.createdAt);
     }
     else if(route==='/v1/orders'&&method==='POST'){
-      check(!isStaff(s.role),'员工账号请使用用户端下单',403);const b={...body} as OrderInput;
+      check(!isStaff(s.role),'员工账号请使用用户端下单',403);check(demoIdentity(db,s.userId).canOrder,'未完成成年登记且尚未入驻，请前往我的 → 实名认证',403);const b={...body} as OrderInput;
       const serviceType=b.serviceType||'hourly';check(['hourly','escort'].includes(serviceType),'订单类型无效');
       const game=db.games.find(g=>g.id===b.gameId);check(game,'请选择游戏');check(game.regions.includes(b.region),'请选择有效的游戏区服');
-      check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'每份服务时长应为 1～8 小时');const copies=b.copies===undefined?1:b.copies;check(Number.isInteger(copies)&&copies>=1&&copies<=MAX_ORDER_COPIES,'购买份数应为 1～99 的整数');check((b.note||'').length<=200,'备注不能超过 200 字');
+      check(Number.isInteger(b.quantity)&&b.quantity>=1&&b.quantity<=8,'服务时长应为 1～8 小时');const copies=b.copies===undefined?1:b.copies;check(Number.isInteger(copies)&&copies>=1&&copies<=MAX_ORDER_COPIES,'购买份数应为 1～99 的整数');check((b.note||'').length<=200,'备注不能超过 200 字');
       if(b.task!==undefined)check(typeof b.task==='string'&&b.task.trim().length>0&&b.task.length<=200,'任务项必须为非空字符串，且不超过 200 字');
       const product=db.products!.find(p=>b.productId?p.id===b.productId:b.playerId?p.active&&p.playerId===b.playerId&&p.serviceType===serviceType&&p.gameId===game.id:p.id===clubProductId(serviceType,game.id));check(product?.active,'商品已下架或不存在');
       check(game.id===product.gameId&&serviceType===product.serviceType,'商品游戏或类型与订单不一致');
@@ -147,23 +151,25 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
       const p=isClubProduct(product)?undefined:db.players.find(p=>p.id===product.playerId);
       if(!isClubProduct(product))check(p?.userId!==s.userId&&p?.approved&&canServe(p,serviceType,game.id),'该队友当前不可预约，请选择其他队友');
       if(serviceType==='escort')check(b.quantity===1,'每份护航按一次约定任务计价');
+      if(serviceType==='hourly')check(copies===1,'组队订单只需选择服务时长，不支持购买份数');
+      check(validContactPhone(b.contactPhone),'请填写有效联系电话（手机或座机）');check(b.contactWechat===undefined||typeof b.contactWechat==='string'&&b.contactWechat.trim().length<=64&&!b.contactWechat.includes('\u0000'),'微信号不能超过 64 字');
       b.task=product.task;const price=product.price,amount=price*b.quantity*copies;
-      const o:Order={productId:product?.id,productTitle:product?.title,serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,copies,amount,commissionBps:db.settings.commissionBps,earnings:Math.floor(amount*(10000-db.settings.commissionBps)/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
+      const o:Order={productId:product?.id,productTitle:product?.title,serviceType,task:serviceType==='escort'?b.task!.trim():'',team:[],id:`XY${new Date(clock()).toISOString().slice(2,10).replace(/-/g,'')}${db.sequence++}`,bossId:s.userId,bossName:s.name,gameId:game.id,gameName:game.name,region:b.region,preferredPlayerId:p?.id,preferredPlayerName:p?.name,unitPrice:price,quantity:b.quantity,copies,amount,commissionBps:DEFAULT_COMMISSION_BPS,memberCommission:true,earnings:Math.floor(amount*(10000-(p?.commissionBps??DEFAULT_COMMISSION_BPS))/10000),status:'unpaid',refundStatus:'none',note:b.note?.trim()||'',contactPhone:b.contactPhone.trim(),contactWechat:b.contactWechat?.trim()||undefined,createdAt:clock(),timeline:[{at:clock(),actor:s.name,label:'订单已创建'}]};db.orders.unshift(o);audit(db,s,'创建订单',o.id,`${game.name} · ${serviceType==='escort'?'护航任务':b.quantity+' 小时'}`);save(db);data=o;
     }
     else if(/^\/v1\/orders\/[^/]+(?:\/[^/]+)?$/.test(route)){
       const [, , ,orderId,action]=route.split('/');const o=db.orders.find(o=>o.id===orderId);check(o,'订单不存在',404);
       if(method==='GET'&&!action){check(isStaff(s.role)||o.bossId===s.userId||orderMembers(o).some(m=>m.playerId===s.playerId)||(o.status==='waiting'&&o.preferredPlayerId===s.playerId),'无权查看该订单',403);data=o;}
       else if(method==='POST'){
-        if(action==='pay'){
+        if(action==='pay'){check(demoIdentity(db,s.userId).canOrder,'未完成成年登记且尚未入驻，请前往我的 → 实名认证',403);
           owner(o,s);if(paid(o)){data=o;}else{if(o.productId){const product=db.products!.find(p=>p.id===o.productId);const seller=db.players.find(p=>p.id===product?.playerId);check(product?.active&&(isClubProduct(product)||(seller&&canServe(seller,o.serviceType,o.gameId))),'商品已下架或服务资格已失效，无法付款');}check(o.status==='unpaid','订单已关闭，无法支付');o.status='waiting';o.paidAt=clock();o.paymentId=id('WXMOCK-');event(o,s,'模拟微信支付成功');audit(db,s,'模拟支付',o.id,`支付 ${(o.amount/100).toFixed(2)} 元`);data=o;}
         }else if(action==='accept'||action==='assign'){
           if(action==='accept')check(!isStaff(s.role),'员工账号不能接单',403);else can(s,'admin','customer_service');check(['waiting','accepted'].includes(o.status),'该订单当前不可接单或改派');check(o.refundStatus!=='pending','售后处理中，暂不可派单');
           const pid=action==='accept'?s.playerId:body.playerId;const p=db.players.find(p=>p.id===pid);check(p?.approved&&p.available&&canServe(p,o.serviceType,o.gameId),'队友未通过审核、已休息或不支持该游戏');
           check(p.userId!==o.bossId,'不能接取自己发布的订单');if(action==='accept'){check(o.status==='waiting','订单已被其他队友接走');check(!o.preferredPlayerId||o.preferredPlayerId===p.id,'这是其他队友的指定订单');}
           check(!db.orders.some(other=>other.id!==o.id&&orderMembers(other).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(other.status)),'该队友还有未完成订单，请稍后再试');
-          const prev=o.playerName;o.playerId=p.id;o.playerName=p.name;o.team=[{playerId:p.id,name:p.name}];o.status='accepted';event(o,s,prev?'订单已改派':'队友已接单',`${prev?prev+' → ':''}${p.name}${body.reason?' · '+body.reason:''}`);audit(db,s,action==='accept'?'接单':'派单',o.id,`分配给 ${p.name}`);data=o;
+          const prev=o.playerName;o.playerId=p.id;o.playerName=p.name;o.team=[{playerId:p.id,name:p.name,...(o.memberCommission?{commissionBps:p.commissionBps??DEFAULT_COMMISSION_BPS}:{})}];o.status='accepted';event(o,s,prev?'订单已改派':'队友已接单',`${prev?prev+' → ':''}${p.name}${body.reason?' · '+body.reason:''}`);audit(db,s,action==='accept'?'接单':'派单',o.id,`分配给 ${p.name}`);data=o;
         }else if(action==='add-assistant'){
-          playerOwner(o,s);check(o.serviceType==='escort'&&o.status==='accepted'&&o.refundStatus!=='pending','仅待开始的护航订单可以添加副手');const p=db.players.find(p=>p.id===body.playerId);check(p?.approved&&p.available&&canServe(p,'escort',o.gameId),'副手需通过护航考核、在线且支持该游戏');check(p.userId!==o.bossId,'下单用户不能参与接取自己的订单');check(!orderMembers(o).some(m=>m.playerId===p.id),'该成员已在协作名单中');check(!db.orders.some(other=>other.id!==o.id&&orderMembers(other).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(other.status)),'该成员还有未完成订单');o.team.push({playerId:p.id,name:p.name});event(o,s,'已添加副手',p.name+' · 完成后均分净报酬');audit(db,s,'添加副手',o.id,p.name);data=o;
+          playerOwner(o,s);check(o.serviceType==='escort'&&o.status==='accepted'&&o.refundStatus!=='pending','仅待开始的护航订单可以添加副手');const p=db.players.find(p=>p.id===body.playerId);check(p?.approved&&p.available&&canServe(p,'escort',o.gameId),'副手需通过护航考核、在线且支持该游戏');check(p.userId!==o.bossId,'下单用户不能参与接取自己的订单');check(!orderMembers(o).some(m=>m.playerId===p.id),'该成员已在协作名单中');check(!db.orders.some(other=>other.id!==o.id&&orderMembers(other).some(m=>m.playerId===p.id)&&['accepted','serving','confirming'].includes(other.status)),'该成员还有未完成订单');o.team.push({playerId:p.id,name:p.name,...(o.memberCommission?{commissionBps:p.commissionBps??DEFAULT_COMMISSION_BPS}:{})});event(o,s,'已添加副手',p.name+(o.memberCommission?' · 服务金额均分后按各自比例抽佣':' · 沿用旧订单净报酬均分规则'));audit(db,s,'添加副手',o.id,p.name);data=o;
         }else if(action==='remove-assistant'){
           playerOwner(o,s);check(o.serviceType==='escort'&&o.status==='accepted'&&o.refundStatus!=='pending','当前不能变更协作成员');check(body.playerId!==o.playerId&&o.team.some(m=>m.playerId===body.playerId),'只能移除副手');o.team=o.team.filter(m=>m.playerId!==body.playerId);event(o,s,'已移除副手');data=o;
         }else if(action==='start'){playerOwner(o,s);check(o.status==='accepted'&&o.refundStatus!=='pending','订单当前无法开始服务');o.status='serving';o.startedAt=clock();o.demoElapsedMs=0;event(o,s,'服务已开始');audit(db,s,'开始服务',o.id,'队友确认开始服务');data=o;
@@ -176,8 +182,8 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
           check(body.reason==null||(typeof body.reason==='string'&&body.reason.length<=200),'退款原因不能超过 200 字');const amount=Number(body.amount);check(Number.isInteger(amount)&&amount>0&&amount<=o.amount,'退款金额必须大于零，且不能超过实付金额');o.refundStatus='pending';o.refundReason=String(body.reason||'').trim()||'用户申请售后';o.refundAmount=amount;event(o,s,'已申请退款',o.refundReason);audit(db,s,'申请退款',o.id,o.refundReason);data=o;
         }else if(action==='review-refund'){
           can(s,'admin','finance');check(o.refundStatus==='pending','该退款已被处理');check(body.approve===true||body.approve===false,'请选择审核结果');check(String(body.note||'').trim().length>=2,'请填写审核说明');o.refundReviewNote=String(body.note).slice(0,200);
-          if(body.approve){o.refundStatus='refunded';const left=o.amount-o.refundAmount!;o.earnings=Math.floor(left*(10000-o.commissionBps)/10000);if(left===0)o.status='cancelled';event(o,s,'模拟原路退款成功',o.refundReviewNote);}else{o.refundStatus='rejected';event(o,s,'退款申请未通过',o.refundReviewNote);}audit(db,s,body.approve?'批准退款':'拒绝退款',o.id,o.refundReviewNote);data=o;
-        }else throw new ApiError(404,'模拟接口不存在');autoSettle(db);save(db);
+          if(body.approve){o.refundStatus='refunded';const left=o.amount-o.refundAmount!;o.earnings=o.memberCommission?totalMemberEarnings(o):Math.floor(left*(10000-o.commissionBps)/10000);if(left===0)o.status='cancelled';event(o,s,'模拟原路退款成功',o.refundReviewNote);}else{o.refundStatus='rejected';event(o,s,'退款申请未通过',o.refundReviewNote);}audit(db,s,body.approve?'批准退款':'拒绝退款',o.id,o.refundReviewNote);data=o;
+        }else throw new ApiError(404,'模拟接口不存在');if(o.memberCommission&&orderMembers(o).length)o.earnings=totalMemberEarnings(o);autoSettle(db);save(db);
       }else throw new ApiError(405,'请求方法不支持');
     }
     else if(route==='/v1/applications'&&method==='GET'){data=isStaff(s.role)?db.applications:db.applications.filter(a=>a.userId===s.userId);}
@@ -192,8 +198,11 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     else if(/^\/v1\/admin\/players\/[^/]+$/.test(route)&&method==='PATCH'){
       can(s,'admin');const p=db.players.find(p=>p.id===route.split('/').pop());check(p,'队友不存在',404);
       if(body.approved!==undefined){check(body.approved===false,'请通过入驻申请与考核流程授予资格');p.approved=false;p.qualifications=[];p.qualificationGames={};}if(body.available!==undefined){check(typeof body.available==='boolean','接单状态无效');p.available=body.available;}
-      if(body.price!==undefined){check(Number.isInteger(body.price)&&body.price>=100&&body.price<=100000,'单价必须在 1～1000 元之间');p.price=body.price;}audit(db,s,'更新队友',p.name,`审核：${p.approved?'通过':'待审'}；可接单：${p.available?'是':'否'}；单价：${p.price/100} 元`);save(db);data=p;
+      check(Object.keys(body).every(key=>['available','approved','commissionBps'].includes(key)),'成员设置字段无效');if(body.commissionBps!==undefined){check(Number.isInteger(body.commissionBps)&&body.commissionBps>=0&&body.commissionBps<=10000,'平台抽佣应为0%～100%，最多两位小数');p.commissionBps=body.commissionBps;}audit(db,s,'更新队友',p.name,`审核：${p.approved?'通过':'待审'}；可接单：${p.available?'是':'否'}；平台抽佣：${(p.commissionBps??DEFAULT_COMMISSION_BPS)/100}%`);save(db);data=p;
     }
+    else if(route==='/v1/wallet'&&method==='GET'){check(profile,'用户资料不存在');data={total:0,pending:0,available:0,frozen:0,settled:0,simulation:db.settlements.filter(v=>v.playerId===s.playerId).reduce((n,v)=>n+v.amount,0),holdHours:24,bank:null,withdrawals:[],entries:[]};}
+    else if(route.startsWith('/v1/wallet/')&&method==='POST'){throw new ApiError(403,'交互演示不支持保存收款账户或真实提现');}
+    else if(route==='/v1/admin/withdrawals'&&method==='GET'){can(s,'admin','finance');data=[];}
     else if(route==='/v1/player/wallet'&&method==='GET'){
       check(profile,'用户资料不存在');const orders=db.orders.filter(o=>orderMembers(o).some(m=>m.playerId===s.playerId)&&o.status==='completed');const batches=db.settlements.filter(v=>v.playerId===s.playerId);const settled=batches.filter(v=>v.status==='paid').reduce((n,v)=>n+v.amount,0);
       data={total:orders.reduce((n,o)=>n+participantEarnings(o,s.playerId),0),pending:orders.reduce((n,o)=>n+participantEarnings(o,s.playerId),0)-settled,settled,available:orders.filter(o=>unsettled(o)&&!orderMembers(o).find(m=>m.playerId===s.playerId)?.settlementId).reduce((n,o)=>n+participantEarnings(o,s.playerId),0),orders,settlements:batches} satisfies Wallet;
@@ -212,11 +221,16 @@ export function createMockServer(storage: StorageAdapter,clock=()=>Date.now()) {
     }
     else if(route==='/v1/admin/audit'&&method==='GET'){can(s,'admin');data=db.audit;}
     else if(route==='/v1/admin/settings'&&method==='PATCH'){
-      can(s,'admin');throw new ApiError(410,'交易规则固定为 20% 服务费、待支付 10 分钟自动关闭，暂不支持修改');
+      can(s,'admin');throw new ApiError(410,'交易规则默认平台抽佣20%，可在成员管理单独调整；待支付10分钟自动关闭，暂不支持修改全局规则');
     }
     else if(route==='/v1/demo/reset'&&method==='POST'){can(s,'admin');const fresh=createSeed(clock());fresh.sessions=db.sessions;save(fresh);data={reset:true};}
     else throw new ApiError(404,`模拟接口不存在：${method} ${route}`);
-    return {code:0,message:'ok',data:clone(data),requestId:id('req-')};
+    if(method==='POST'&&/^\/v1\/orders\//.test(route)&&data&&typeof data==='object'&&'bossId' in data){const order=data as Order;if(order.memberCommission&&orderMembers(order).length)order.earnings=totalMemberEarnings(order);}
+    const response=clone(data);
+    const redact=(o:Order)=>{if(o.memberCommission&&!o.playerId&&!isStaff(s.role)&&o.bossId!==s.userId&&profile&&(!o.preferredPlayerId||o.preferredPlayerId===profile.id)){o.estimatedCommissionBps=profile.commissionBps??DEFAULT_COMMISSION_BPS;o.earnings=Math.floor(orderRevenue(o)*(10000-o.estimatedCommissionBps)/10000);}if(q.get('scope')==='hall'||!isStaff(s.role)&&o.bossId!==s.userId&&!orderMembers(o).some(m=>m.playerId===s.playerId)){delete o.contactPhone;delete o.contactWechat;}return o;};
+    if(route==='/v1/orders'&&method==='GET'&&Array.isArray(response))response.forEach(redact);
+    else if(/^\/v1\/orders\//.test(route)&&response&&typeof response==='object'&&'bossId' in response)redact(response as Order);
+    return {code:0,message:'ok',data:response,requestId:id('req-')};
   }
   return {dispatch,read:()=>clone(read())};
 }

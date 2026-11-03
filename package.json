@@ -22,6 +22,7 @@
     "server:build:acceptance": "node scripts/backend.mjs package -Pacceptance",
     "server:start:acceptance": "CLUB_ENV_FILE=.local/acceptance.env node scripts/backend.mjs start-acceptance",
     "server:tunnel": "node scripts/acceptance-tunnel.mjs",
+    "server:tunnel:https": "node scripts/acceptance-tunnel.mjs --https",
     "server:dev": "node scripts/backend.mjs run",
     "server:test": "node scripts/backend.mjs test",
     "server:build": "node scripts/backend.mjs package",
@@ -29,7 +30,8 @@
     "server:reset-staff": "node scripts/backend.mjs reset-staff",
     "build:http": "VITE_API_MODE=http VITE_API_BASE_URL=/api SITE_OUTPUT_DIR=dist-http npm run build",
     "preview:http": "SITE_OUTPUT_DIR=dist-http HTTP_API_UPSTREAM=http://127.0.0.1:8080 PORT=4180 npm run preview",
-    "server:start": "node scripts/backend.mjs start"
+    "server:start": "node scripts/backend.mjs start",
+    "server:deploy": "artifacts/ops-venv/bin/python deploy/rds/ssh-deploy.py"
   },
   "workspaces": [
     "apps/*",

@@ -6,7 +6,7 @@ public final class Rows {
     private Rows() { }
     public static class Profile {
         public String id,userId,name,subtitle,gameIds,tags,color,avatar,bio;
-        public double rating; public int completed,price;public boolean available,approved;public long createdAt;
+        public double rating; public int completed,price;public int commissionBps=2000;public boolean available,approved;public long createdAt;
     }
     public static class Qualification { public String playerId,serviceType,gameId;public long grantedAt; }
     public static class Application {
@@ -20,10 +20,11 @@ public final class Rows {
     public static class Order {
         public String id,productId,productTitle,bossId,bossName,gameId,gameName,region,serviceType,task;
         public String preferredPlayerId,preferredPlayerName,playerId,playerName,status,refundStatus,refundId,refundReason,refundReviewNote,note,paymentId,settlementId;
-        public int unitPrice,quantity,amount,commissionBps,earnings;public int copies=1;public Integer refundAmount;public boolean taskCompleted;
+        public String contactPhoneEnc,contactWechatEnc;
+        public int unitPrice,quantity,amount,commissionBps,earnings;public int copies=1;public Integer refundAmount;public boolean taskCompleted,memberCommission;
         public long createdAt,expiresAt,version;public Long paidAt,startedAt,finishedAt;
     }
-    public static class Member { public String orderId,playerId,name,settlementId;public int position; }
+    public static class Member { public String orderId,playerId,name,settlementId;public int position;public Integer commissionBps; }
     public static class Event { public String id,orderId,actor,label,note;public long at; }
     public static class Audit { public String id,actor,action,target,detail;public long at; }
     public static class Income { public String id,orderId,playerId,playerName,status;public int amount;public long createdAt;public Long paidAt; }

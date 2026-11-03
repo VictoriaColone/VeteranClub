@@ -14,7 +14,10 @@ parser.add_argument('--user', default='norman-preview')
 parser.add_argument('--key', type=Path, required=True)
 parser.add_argument('--known-hosts', type=Path, required=True)
 parser.add_argument('--port', type=int, default=4190)
+parser.add_argument('--target-port', type=int, choices=(8088, 8443), default=8088)
 args = parser.parse_args()
+if args.target_port == 8443 and args.port != 8443:
+    parser.error('Private HTTPS uses local port 8443 to preserve its exact trusted origin')
 client = paramiko.SSHClient()
 client.load_host_keys(str(args.known_hosts))
 client.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -25,7 +28,7 @@ transport.set_keepalive(30)
 class Forward(socketserver.BaseRequestHandler):
     def handle(self):
         try:
-            channel = transport.open_channel('direct-tcpip', ('127.0.0.1', 8088), self.client_address)
+            channel = transport.open_channel('direct-tcpip', ('127.0.0.1', args.target_port), self.client_address)
             with channel:
                 while transport.is_active():
                     readable, _, _ = select.select([self.request, channel], [], [], 1)
@@ -45,7 +48,8 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 with Server(('127.0.0.1', args.port), Forward) as server:
-    print(f'Server acceptance: http://127.0.0.1:{args.port}/mobile/ and /admin/', flush=True)
+    base = 'https://preview.veteranclub.icu:8443' if args.target_port == 8443 else f'http://127.0.0.1:{args.port}'
+    print(f'Server acceptance: {base}/mobile/ and /admin/', flush=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

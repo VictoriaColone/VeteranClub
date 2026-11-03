@@ -69,3 +69,9 @@ javac --release 17 -d artifacts/rds-password-probe deploy/rds/RdsPasswordProbe.j
 脚本只同步服务器配置，不调用数据库密码重置接口。密码不放入命令参数、聊天或 Git；如验证失败，保留维护状态和配置备份供排查，不自动恢复已经失效的旧密码。DMS 等客户端及本机保存的凭据也需更新。安全验证用 `python3 -B -m unittest discover -s tests -p test_rds_password.py`。
 
 若之前的前台任务因终端断开中断，先核查服务、配置和维护标记，再使用独立任务执行 `resume`（为每次任务选择新的单元名称）。`resume` 要求维护标记和匹配暂存摘要的原始配置备份存在，只接受原配置或预期的新密码配置；出现无关配置改动时会拒绝继续。任务结果可用 `systemctl status norman-rds-password-apply --no-pager` 和 `journalctl -u norman-rds-password-apply --no-pager` 查看，日志不会输出密码。
+
+2026-10-31 V8身份与用户密码增量见 `deploy/rds/user-identity-v8.sql`。先由数据库管理员执行新增列/唯一索引，再部署对应应用；Java迁移兼容预建结构，应用普通账号无须增加ALTER权限。字段用途、旧数据处理与密钥维护见数据库手册。
+
+## 2026-11-02 钱包V9已部署
+
+源码新增7表，DDL见`deploy/rds/member-wallet-v9.sql`，配套部署包、顺序及验证见[钱包上线说明](WALLET-PAYMENTS.md)。已在原业务库执行7表DDL并由应用登记Flyway V9；核验InnoDB、52字段、10唯一键、5查询索引及3资金CHECK。普通应用账号维持原DML权限，不回填历史收入。云端版本uat-20261102-wallet-01，健康检查和两端页面验收通过。

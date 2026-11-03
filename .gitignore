@@ -5,6 +5,7 @@ apps/*/dist/
 .sites-runtime/
 *.log
 .DS_Store
+.idea/
 .env.local
 artifacts/
 apps/mobile/src/components/vendor-ui/

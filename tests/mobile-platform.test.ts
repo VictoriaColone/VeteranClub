@@ -22,7 +22,7 @@ test('小程序本地存储支持关闭后重建客户端，保留购买、支�
   assert.equal(storage.getItem('missing'),null);saved.set('invalid',{});assert.equal(storage.getItem('invalid'),null);
   const server=createMockServer(storage);const db=server.read();db.orders=[];storage.setItem(STORAGE_KEY,JSON.stringify(db));
   const buyer=new ClubApi(createMockTransport(storage,0));await buyer.login('user');
-  const order=await buyer.createOrder({gameId:'valorant',serviceType:'hourly',region:'国服 · 华东',quantity:1});
+  const order=await buyer.createOrder({contactPhone:'13800000000',gameId:'valorant',serviceType:'hourly',region:'国服 · 华东',quantity:1});
   await buyer.act(order.id,'pay');
   const member=new ClubApi(createMockTransport(createUniStorage({getStorageSync:key=>saved.get(key),setStorageSync:(key,value)=>{saved.set(key,value);}}),0));
   await member.login('user','u-hourly');assert.equal((await member.orders({scope:'hall'}))[0].id,order.id);
@@ -49,15 +49,16 @@ test('平台无关路由解析保留筛选、中文、加号、等号以及第�
 });
 
 test('微信 HTTP 将 PATCH 转成带覆盖声明的 POST，H5 保留原方法',async()=>{
-  const old=globalThis.uni;const requests:any[]=[];
+  const old=globalThis.uni,oldFetch=globalThis.fetch;const requests:any[]=[];let h5:RequestInit|undefined;
   try{
     globalThis.uni={request(options:any){requests.push(options);options.success({statusCode:200,data:{code:0,data:{active:false}}});}} as any;
     const mobile=createUniHttpTransport('https://api.example.com/',true);
     assert.deepEqual(await mobile('PATCH','/v1/products/SP-1',{active:false},'session'),{active:false});
     assert.equal(requests[0].url,'https://api.example.com/v1/products/SP-1');assert.equal(requests[0].method,'POST');
     assert.equal(requests[0].header['X-HTTP-Method-Override'],'PATCH');assert.equal(requests[0].header.Authorization,'Bearer session');assert.equal(requests[0].timeout,15000);
-    await createUniHttpTransport('https://api.example.com',false)('PATCH','/v1/products/SP-1');assert.equal(requests[1].method,'PATCH');assert.equal(requests[1].header['X-HTTP-Method-Override'],undefined);
-  }finally{globalThis.uni=old;}
+    globalThis.fetch=async(_url,init)=>{h5=init;return new Response(JSON.stringify({code:0,data:{active:false}}));};
+    await createUniHttpTransport('https://api.example.com',false)('PATCH','/v1/products/SP-1');assert.equal(h5?.method,'PATCH');assert.equal((h5?.headers as Record<string,string>)['X-HTTP-Method-Override'],undefined);assert.equal(h5?.redirect,'error');assert.equal(requests.length,1);
+  }finally{globalThis.uni=old;globalThis.fetch=oldFetch;}
 });
 
 test('网络失败和不合法服务响应会拒绝请求，不报告模拟支付成功',async()=>{

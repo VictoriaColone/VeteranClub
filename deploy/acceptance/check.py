@@ -31,7 +31,7 @@ def login(role='user', user='u-boss'):
     return request('POST', '/v1/auth/sms/login/acceptance', {'role': role, 'accountId': user})
 
 login()
-order = request('POST', '/v1/orders', {'gameId':'delta', 'region':'国服', 'serviceType':'escort', 'task':'100w纯带出', 'taskPrice':12800, 'quantity':1, 'note':'部署验收自动检查 · 仅模拟收付款'})
+order = request('POST', '/v1/orders', {'gameId':'delta', 'region':'国服', 'serviceType':'escort', 'task':'100w纯带出', 'taskPrice':12800, 'contactPhone':'13800000000', 'quantity':1, 'note':'部署验收自动检查 · 仅模拟收付款'})
 order_id = order['id']
 assert request('POST', '/v1/acceptance/orders/' + order_id + '/pay', {})['status'] == 'waiting'
 login(user='u-player')

@@ -33,7 +33,7 @@ test('指定商品订单付款后进入私有单，售后与接单后移出，�
   const profile=(await member.players()).find(p=>p.userId==='u-hourly')!;
   const product=(await member.products('mine')).find(p=>p.gameId==='valorant'&&p.serviceType==='hourly')!;
   const privateOrders=async()=>receivableHallOrders(await member.orders(),'private',profile,profile.userId);
-  const buy=()=>buyer.createOrder({productId:product.id,gameId:product.gameId,serviceType:product.serviceType,region:'国服 · 华东',quantity:1});
+  const buy=()=>buyer.createOrder({contactPhone:'13800000000',productId:product.id,gameId:product.gameId,serviceType:product.serviceType,region:'国服 · 华东',quantity:1});
   const first=await buy();assert.equal((await privateOrders()).length,0);
   await buyer.act(first.id,'pay');assert.deepEqual((await privateOrders()).map(o=>o.id),[first.id]);
   assert.ok(!(await member.orders({scope:'hall'})).some(o=>o.id===first.id));assert.ok(!(await other.orders()).some(o=>o.id===first.id));
@@ -51,10 +51,10 @@ test('岚购买公共组队服务不会对仅护航入驻的凛展示，指定�
   const escortProfile=(await escort.players()).find(p=>p.userId==='u-escort')!,hourlyProfile=(await hourly.players()).find(p=>p.userId==='u-hourly')!;
   const publicIds:string[]=[];
   for(const game of [{id:'delta',region:'国服'},{id:'valorant',region:'国服 · 华东'}]){
-    const order=await buyer.createOrder({productId:'club-hourly-'+game.id,gameId:game.id,serviceType:'hourly',region:game.region,quantity:1});await buyer.act(order.id,'pay');publicIds.push(order.id);
+    const order=await buyer.createOrder({contactPhone:'13800000000',productId:'club-hourly-'+game.id,gameId:game.id,serviceType:'hourly',region:game.region,quantity:1});await buyer.act(order.id,'pay');publicIds.push(order.id);
   }
   const product=(await escort.products('mine')).find(p=>p.gameId==='delta'&&p.serviceType==='escort')!;
-  const invited=await buyer.createOrder({productId:product.id,gameId:'delta',serviceType:'escort',region:'国服',quantity:1});await buyer.act(invited.id,'pay');
+  const invited=await buyer.createOrder({contactPhone:'13800000000',productId:product.id,gameId:'delta',serviceType:'escort',region:'国服',quantity:1});await buyer.act(invited.id,'pay');
   assert.deepEqual(receivableHallOrders(await escort.orders({scope:'hall'}),'public',escortProfile,'u-escort'),[]);
   assert.deepEqual(new Set(receivableHallOrders(await hourly.orders({scope:'hall'}),'public',hourlyProfile,'u-hourly').map(o=>o.id)),new Set(publicIds));
   assert.deepEqual(receivableHallOrders(await escort.orders(),'private',escortProfile,'u-escort').map(o=>o.id),[invited.id]);

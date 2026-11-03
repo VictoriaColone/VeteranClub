@@ -5,8 +5,8 @@ import {ApiError,ClubApi,type Transport,type OrderInput} from '../packages/core/
 test('下单响应丢失时重试沿用请求号，成功后新的下单使用新的请求号',async()=>{
   const keys:string[]=[];let first=true;
   const transport:Transport=async<T>(_method,_path,_body,_token,key)=>{keys.push(key!);if(first){first=false;throw new ApiError(503,'response lost after commit');}return {id:'server-order'} as T;};
-  const api=new ClubApi(transport);const input:OrderInput={gameId:'delta',region:'国服',quantity:1,serviceType:'escort',task:'100w纯带出',taskPrice:10000};
-  await assert.rejects(api.createOrder(input));await api.createOrder({...input});await api.createOrder({...input});
+  const api=new ClubApi(transport);const input:OrderInput={contactPhone:'13800000000',gameId:'delta',region:'国服',quantity:1,serviceType:'escort',task:'100w纯带出',taskPrice:10000};
+  await assert.rejects(api.createOrder(input));await api.createOrder({contactPhone:'13800000000',...input});await api.createOrder({contactPhone:'13800000000',...input});
   assert.ok(keys[0]);assert.equal(keys[0],keys[1]);assert.notEqual(keys[1],keys[2]);
 });
 

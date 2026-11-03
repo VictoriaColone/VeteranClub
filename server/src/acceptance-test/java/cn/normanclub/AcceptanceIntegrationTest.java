@@ -45,6 +45,12 @@ class AcceptanceIntegrationTest {
         String audience=role.equals("user")?"user":"staff";
         var response=role.equals("user")?request("POST","/v1/auth/sms/login/acceptance",json.writeValueAsString(Map.of("role",role,"accountId",user)),audience):request("POST","/v1/auth/staff/login",json.writeValueAsString(Map.of("username","norman_app_manager","password",STAFF_PASSWORD)),audience);assertEquals(200,response.statusCode(),response.body());
         for(String cookie:response.headers().allValues("Set-Cookie"))if(cookie.startsWith("norman-"+(role.equals("user")?"user":"staff")+"-csrf="))csrfTokens.put(role.equals("user")?"user":"staff",cookie.substring(cookie.indexOf('=')+1,cookie.indexOf(';')));
+        if(role.equals("user")&&user.equals("u-boss")){
+            var current=json.readTree(request("GET","/v1/account/identity",null,"user").body()).path("data");
+            if(current.path("status").asText().equals("missing")){
+                var submitted=request("POST","/v1/account/identity",json.writeValueAsString(Map.of("name","测试身份","idNumber",ResidentIdentityTest.number("19900101",11),"consent",true,"consentVersion",cn.normanclub.auth.UserIdentityService.CONSENT_VERSION)),"user");assertEquals(200,submitted.statusCode());
+            }
+        }
         return json.readTree(response.body()).path("data");
     }
     @Test void productionAndPublicDatabaseSettingsCannotStartAcceptancePackage(){
@@ -84,10 +90,10 @@ class AcceptanceIntegrationTest {
         login("user","u-player");java.util.Set<String> publicIds=new java.util.HashSet<>();
         for(String game:List.of("delta","valorant")){
             String region=game.equals("delta")?"国服":"国服 · 华东";
-            var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-hourly-"+game,"gameId",game,"serviceType","hourly","region",region,"quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
+            var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-hourly-"+game,"gameId",game,"serviceType","hourly","region",region,"contactPhone","13800000000","quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
             String id=json.readTree(created.body()).path("data").path("id").asText();publicIds.add(id);assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
         }
-        var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","acceptance-p-escort-escort-delta","gameId","delta","serviceType","escort","region","国服","quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
+        var created=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","acceptance-p-escort-escort-delta","gameId","delta","serviceType","escort","region","国服","contactPhone","13800000000","quantity",1)),"user");assertEquals(200,created.statusCode(),created.body());
         String invited=json.readTree(created.body()).path("data").path("id").asText();assertEquals(200,request("POST","/v1/acceptance/orders/"+invited+"/pay","{}","user").statusCode());
         login("user","u-escort");String escortHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertFalse(escortHall.contains(id));assertFalse(escortHall.contains(invited));assertTrue(request("GET","/v1/orders",null,"user").body().contains(invited));
         login("user","u-hourly");String hourlyHall=request("GET","/v1/orders?scope=hall",null,"user").body();for(String id:publicIds)assertTrue(hourlyHall.contains(id));assertFalse(hourlyHall.contains(invited));
@@ -109,14 +115,14 @@ class AcceptanceIntegrationTest {
     @Test void copiedOrdersExposeOneTotalInTheCorrectHall()throws Exception{
         login("user","u-boss");Map<String,String> ids=new HashMap<>();
         for(String type:List.of("hourly","escort")){
-            int copies=type.equals("hourly")?3:2;
-            var response=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-"+type+"-delta","gameId","delta","serviceType",type,"region","国服","quantity",1,"copies",copies)),"user");assertEquals(200,response.statusCode(),response.body());
+            int copies=type.equals("hourly")?1:2;
+            var response=request("POST","/v1/orders",json.writeValueAsString(Map.of("productId","club-"+type+"-delta","gameId","delta","serviceType",type,"region","国服","contactPhone","13800000000","quantity",1,"copies",copies)),"user");assertEquals(200,response.statusCode(),response.body());
             var order=json.readTree(response.body()).path("data");String id=order.path("id").asText();ids.put(type,id);assertEquals(copies,order.path("copies").asInt());assertEquals(order.path("unitPrice").asInt()*copies,order.path("amount").asInt());
             assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
         }
         for(String type:List.of("hourly","escort")){
             login("user",type.equals("hourly")?"u-hourly":"u-escort");var hall=json.readTree(request("GET","/v1/orders?scope=hall",null,"user").body()).path("data");int count=0;
-            for(var order:hall)if(order.path("id").asText().equals(ids.get(type))){count++;assertEquals(type.equals("hourly")?3:2,order.path("copies").asInt());assertEquals(type.equals("hourly")?16320:20480,order.path("earnings").asInt());}
+            for(var order:hall)if(order.path("id").asText().equals(ids.get(type))){count++;assertEquals(type.equals("hourly")?1:2,order.path("copies").asInt());assertEquals(type.equals("hourly")?5440:20480,order.path("earnings").asInt());}
             assertEquals(1,count);
         }
     }
@@ -128,7 +134,7 @@ class AcceptanceIntegrationTest {
     }
     @Test void escortFlowPersistsPaymentMembersAndAutomaticCreditWithoutRealMoney()throws Exception{
         login("user","u-boss");
-        var created=request("POST","/v1/orders","{\"gameId\":\"delta\",\"region\":\"国服\",\"serviceType\":\"escort\",\"task\":\"100w纯带出\",\"taskPrice\":12800,\"quantity\":1}","user");assertEquals(200,created.statusCode(),created.body());String id=json.readTree(created.body()).path("data").path("id").asText();
+        var created=request("POST","/v1/orders","{\"gameId\":\"delta\",\"region\":\"国服\",\"serviceType\":\"escort\",\"task\":\"100w纯带出\",\"taskPrice\":12800,\"contactPhone\":\"13800000000\",\"quantity\":1}","user");assertEquals(200,created.statusCode(),created.body());String id=json.readTree(created.body()).path("data").path("id").asText();
         var paid=request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user");assertEquals(200,paid.statusCode(),paid.body());assertEquals("waiting",json.readTree(paid.body()).path("data").path("status").asText());
         assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
         login("user","u-player");assertEquals(200,request("POST","/v1/orders/"+id+"/accept","{}","user").statusCode());
@@ -140,7 +146,7 @@ class AcceptanceIntegrationTest {
     }
     @Test void hourlyFastForwardAndRefundStillUseDatabaseStateAndChannelConfirmation()throws Exception{
         login("user","u-boss");
-        var created=request("POST","/v1/orders","{\"gameId\":\"delta\",\"region\":\"国服\",\"serviceType\":\"hourly\",\"playerId\":\"p-hourly\",\"quantity\":1}","user");assertEquals(200,created.statusCode(),created.body());String id=json.readTree(created.body()).path("data").path("id").asText();
+        var created=request("POST","/v1/orders","{\"gameId\":\"delta\",\"region\":\"国服\",\"serviceType\":\"hourly\",\"playerId\":\"p-hourly\",\"contactPhone\":\"13800000000\",\"quantity\":1}","user");assertEquals(200,created.statusCode(),created.body());String id=json.readTree(created.body()).path("data").path("id").asText();
         assertEquals(200,request("POST","/v1/acceptance/orders/"+id+"/pay","{}","user").statusCode());
         login("user","u-hourly");assertEquals(200,request("POST","/v1/orders/"+id+"/accept","{}","user").statusCode());assertEquals(200,request("POST","/v1/orders/"+id+"/start","{}","user").statusCode());
         assertEquals(409,request("POST","/v1/orders/"+id+"/finish","{\"note\":\"还没有达到服务时长\"}","user").statusCode());

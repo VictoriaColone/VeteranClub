@@ -11,12 +11,12 @@ async function fixture(){
 }
 
 for(const type of ['hourly','escort'] as ServiceType[])for(const privateOrder of [false,true])test(`${type} ${privateOrder?'指定邀约':'公共单'}：多份合并一单，总价、收入与履约一致`,async()=>{
-  const f=await fixture(),quantity=type==='hourly'?2:1,copies=3;
+  const f=await fixture(),quantity=type==='hourly'?6:1,copies=type==='hourly'?1:3;
   const product=(await (privateOrder?f.member.products('mine'):f.buyer.products())).find(p=>p.gameId==='valorant'&&p.serviceType===type&&(privateOrder?p.userId==='u-player':p.sellerType==='club'))!;
-  const order=await f.buyer.createOrder({productId:product.id,serviceType:type,gameId:'valorant',region:'国服 · 华东',quantity,copies});
-  assert.equal(f.server.read().orders.length,1);assert.equal(order.copies,3);assert.equal(order.quantity,quantity);
+  const order=await f.buyer.createOrder({contactPhone:'13800000000',productId:product.id,serviceType:type,gameId:'valorant',region:'国服 · 华东',quantity,copies});
+  assert.equal(f.server.read().orders.length,1);assert.equal(order.copies,copies);assert.equal(order.quantity,quantity);
   assert.equal(order.amount,product.price*quantity*copies);assert.equal(order.earnings,Math.floor(order.amount*.8));
-  assert.equal(orderUnits(order),`${type==='hourly'?'2小时':product.task} ×3`);
+  assert.equal(orderUnits(order),type==='hourly'?'6小时':`${product.task} ×3`);
   await f.buyer.act(order.id,'pay');
   const listed=await f.member.orders(privateOrder?{}:{scope:'hall'});assert.equal(listed.filter(o=>o.id===order.id).length,1);assert.equal(listed.find(o=>o.id===order.id)!.earnings,order.earnings);
   await f.member.act(order.id,'accept');await f.member.act(order.id,'start');
@@ -29,26 +29,27 @@ for(const type of ['hourly','escort'] as ServiceType[])for(const privateOrder of
 });
 
 test('购买份数缺省为一份，拒绝小数、字符串、越界和空值',async()=>{
-  const f=await fixture();const input={gameId:'valorant',region:'国服 · 华东',quantity:1};
+  const f=await fixture();const input={contactPhone:'13800000000',gameId:'valorant',region:'国服 · 华东',quantity:1};
   const old=await f.buyer.createOrder(input);assert.equal(old.copies,1);assert.equal(old.amount,old.unitPrice);
-  for(const copies of [0,-1,100,1.5,'3','1 OR 1=1',null,true])await assert.rejects(f.buyer.createOrder({...input,copies:copies as any}),/购买份数/);
+  for(const copies of [0,-1,100,1.5,'3','1 OR 1=1',null,true])await assert.rejects(f.buyer.createOrder({contactPhone:'13800000000',...input,copies:copies as any}),/购买份数/);
   assert.equal(f.server.read().orders.length,1);
-  const max=await f.buyer.createOrder({...input,quantity:8,copies:99});assert.equal(max.amount,max.unitPrice*8*99);
+  await assert.rejects(f.buyer.createOrder({...input,copies:2}),/组队订单/);
+  const max=await f.buyer.createOrder({...input,serviceType:'escort',copies:99});assert.equal(max.amount,max.unitPrice*99);
 });
 
-test('旧本地订单默认一份，保留历史金额；展示时明确每份时长和总时长',()=>{
+test('旧本地订单默认一份，保留历史金额；展示时汇总历史总时长',()=>{
   const storage=new MemoryStorage(),db=createMockServer(storage).read(),amounts=db.orders.map(o=>o.amount);
   db.orders.forEach(o=>delete o.copies);storage.setItem(STORAGE_KEY,JSON.stringify(db));const migrated=createMockServer(storage).read();
   assert.ok(migrated.orders.every(o=>o.copies===1));assert.deepEqual(migrated.orders.map(o=>o.amount),amounts);
   const legacy={...migrated.orders[0],serviceType:'hourly',quantity:2,copies:undefined} as Order;
-  assert.equal(orderCopies(legacy),1);assert.equal(orderUnits(legacy),'2小时 ×1');assert.equal(totalOrderHours(legacy),2);
-  assert.equal(orderSummary({...legacy,copies:3}),'2小时 ×3 · 共6小时');
+  assert.equal(orderCopies(legacy),1);assert.equal(orderUnits(legacy),'2小时');assert.equal(totalOrderHours(legacy),2);
+  assert.equal(orderSummary({...legacy,copies:3}),'6小时');
 });
 
 test('多份护航的部分退款按整单重算收入，副手分账之和保持一致',async()=>{
   const f=await fixture(),finance=new ClubApi(f.transport);await finance.login('finance');
   const product=await f.member.publishProduct({gameId:'valorant',serviceType:'escort',title:'多份任务护航',description:'验证多份服务退款后的分账尾差',price:101,task:'100w纯带出'});
-  const order=await f.buyer.createOrder({productId:product.id,gameId:'valorant',serviceType:'escort',region:'国服 · 华东',quantity:1,copies:3});assert.equal(order.amount,303);
+  const order=await f.buyer.createOrder({contactPhone:'13800000000',productId:product.id,gameId:'valorant',serviceType:'escort',region:'国服 · 华东',quantity:1,copies:3});assert.equal(order.amount,303);
   await f.buyer.act(order.id,'pay');await f.member.act(order.id,'accept');await f.member.act(order.id,'add-assistant',{playerId:'p7'});
   await f.buyer.act(order.id,'refund',{amount:17,reason:'部分任务协商退款'});const revised=await finance.act(order.id,'review-refund',{approve:true,note:'按总订单金额退还部分款项'});
   assert.equal(revised.earnings,228);assert.equal(revised.team.reduce((sum,m)=>sum+participantEarnings(revised,m.playerId),0),228);

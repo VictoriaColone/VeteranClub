@@ -3,7 +3,12 @@ package cn.normanclub.payment;
 import java.util.Map;
 import cn.normanclub.business.Rows;
 
-/** SDK adapters must verify signatures, merchant/app identity, amount and currency before returning verified results. */
+/**
+ * Only trusted server SDK adapters may produce VerifiedPayment. Verify the raw
+ * signature/certificate, merchant/app identity, success state and provider replay
+ * rules; query/close must authenticate their responses too. PaymentService then
+ * binds the result to the requested channel/payment and checks stored amounts.
+ */
 public interface PaymentGateway {
     String channel();
     boolean configured();

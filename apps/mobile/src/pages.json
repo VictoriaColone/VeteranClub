@@ -1,1 +1,64 @@
-{"pages":[{"path":"pages/index/index","style":{"navigationStyle":"custom","disableScroll":true,"navigationBarTitleText":"诺曼部落"}}],"globalStyle":{"navigationStyle":"custom","backgroundColor":"#101218"}}
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "诺曼部落"
+      }
+    },
+    {
+      "path": "pages/account/orders",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "我的订单"
+      }
+    },
+    {
+      "path": "pages/account/security",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "账号安全"
+      }
+    },
+    {
+      "path": "pages/account/identity",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "实名认证"
+      }
+    },
+    {
+      "path": "pages/account/products",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "我的商品"
+      }
+    },
+    {
+      "path": "pages/account/wallet",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "我的钱包"
+      }
+    },
+    {
+      "path": "pages/account/wechat-pay",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTitleText": "微信支付"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#101218"
+  }
+}

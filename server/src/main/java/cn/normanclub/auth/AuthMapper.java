@@ -9,12 +9,16 @@ public interface AuthMapper {
     class Identity { public String id,userId,provider,appId,subjectHash,subjectCipher,maskedValue;public long createdAt; }
     class Staff { public String id,username,name,passwordHash,role,totpCipher;public boolean disabled;public long lastTotpStep,createdAt; }
     class Session { public String tokenHash,accountId,audience,csrfHash;public boolean bearer;public long expiresAt,lastSeenAt,createdAt; }
-    class Sms { public String phoneHash,codeHash;public int attempts;public long sentAt,expiresAt;public boolean consumed; }
+    class Sms { public String phoneHash,codeHash,purpose;public int attempts;public long sentAt,expiresAt;public boolean consumed; }
     class Challenge { public String tokenHash,staffId,setupCipher;public int attempts;public long expiresAt;public boolean consumed; }
     @Select("SELECT * FROM club_user WHERE id=#{id}") User user(String id);
     @Select("SELECT * FROM club_user WHERE id=#{id} FOR UPDATE") User lockUser(String id);
     @Insert("INSERT INTO club_user(id,name,disabled,created_at) VALUES(#{id},#{name},FALSE,#{createdAt})") void insertUser(User user);
+    @Select("SELECT password_hash FROM club_user WHERE id=#{id}") String userPassword(String id);
+    @Select("SELECT password_hash FROM club_user WHERE id=#{id} FOR UPDATE") String latestUserPassword(String id);
+    @Update("UPDATE club_user SET password_hash=#{hash} WHERE id=#{id} AND disabled=FALSE AND closed_at IS NULL") int userPasswordUpdate(String id,String hash);
     @Select("SELECT * FROM login_identity WHERE provider='phone' AND app_id='' AND subject_hash=#{hash}") Identity phone(String hash);
+    @Select("SELECT * FROM login_identity WHERE user_id=#{userId} AND provider='phone' AND app_id='' ORDER BY created_at DESC,id LIMIT 1") Identity phoneByUser(String userId);
     @Insert("INSERT INTO login_identity(id,user_id,provider,app_id,subject_hash,subject_cipher,masked_value,created_at) VALUES(#{id},#{userId},#{provider},#{appId},#{subjectHash},#{subjectCipher},#{maskedValue},#{createdAt})") void insertIdentity(Identity id);
     @Select("SELECT * FROM staff_account WHERE username=#{username}") Staff staffByUsername(String username);
     @Select("SELECT * FROM staff_account WHERE id=#{id}") Staff staff(String id);
@@ -31,7 +35,7 @@ public interface AuthMapper {
     @Delete("DELETE FROM auth_session WHERE token_hash=#{hash}") void logout(String hash);
     @Delete("DELETE FROM auth_session WHERE account_id=#{id} AND audience=#{audience}") void revoke(String id,String audience);
     @Select("SELECT * FROM sms_code WHERE phone_hash=#{hash} FOR UPDATE") Sms sms(String hash);
-    @Insert("INSERT INTO sms_code(phone_hash,code_hash,attempts,sent_at,expires_at,consumed) VALUES(#{phoneHash},#{codeHash},#{attempts},#{sentAt},#{expiresAt},#{consumed}) ON DUPLICATE KEY UPDATE code_hash=#{codeHash},attempts=#{attempts},sent_at=#{sentAt},expires_at=#{expiresAt},consumed=#{consumed}") void putSms(Sms sms);
+    @Insert("INSERT INTO sms_code(phone_hash,code_hash,purpose,attempts,sent_at,expires_at,consumed) VALUES(#{phoneHash},#{codeHash},#{purpose},#{attempts},#{sentAt},#{expiresAt},#{consumed}) ON DUPLICATE KEY UPDATE code_hash=#{codeHash},purpose=#{purpose},attempts=#{attempts},sent_at=#{sentAt},expires_at=#{expiresAt},consumed=#{consumed}") void putSms(Sms sms);
     @Select("SELECT * FROM auth_challenge WHERE token_hash=#{hash} FOR UPDATE") Challenge challenge(String hash);
     @Insert("INSERT INTO auth_challenge(token_hash,staff_id,setup_cipher,attempts,expires_at,consumed) VALUES(#{tokenHash},#{staffId},#{setupCipher},0,#{expiresAt},FALSE)") void insertChallenge(Challenge c);
     @Update("UPDATE auth_challenge SET attempts=#{attempts},consumed=#{consumed} WHERE token_hash=#{tokenHash}") void updateChallenge(Challenge c);
